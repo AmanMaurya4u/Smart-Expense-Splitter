@@ -13,10 +13,11 @@ function getInitialData() {
   return {
     version: CURRENT_SCHEMA_VERSION,
     theme: 'light',
-    group: null, // { id, name, currentUserId, createdAt }
+    group: null, // { id, name, currentUserId, budget, createdAt }
     members: [], // [{ id, name, contact, createdAt }]
     expenses: [], // [{ id, title, amount, category, paidBy, splitType, participants, customShares, date, createdAt }]
-    settlements: [] // [{ id, from, to, amount, status, paidAt }]
+    settlements: [], // [{ id, from, to, amount, status, payments, paidAt }]
+    activities: [] // [{ id, type, category, message, actor, amount, relatedEntityId, timestamp }]
   };
 }
 
@@ -99,6 +100,7 @@ function migrateData(data) {
   if (!Array.isArray(data.members)) data.members = [];
   if (!Array.isArray(data.expenses)) data.expenses = [];
   if (!Array.isArray(data.settlements)) data.settlements = [];
+  if (!Array.isArray(data.activities)) data.activities = [];
   if (!data.theme) data.theme = 'light';
   if (data.group && typeof data.group.budget === 'undefined') {
     data.group.budget = null;

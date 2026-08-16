@@ -100,6 +100,9 @@ function migrateData(data) {
   if (!Array.isArray(data.expenses)) data.expenses = [];
   if (!Array.isArray(data.settlements)) data.settlements = [];
   if (!data.theme) data.theme = 'light';
+  if (data.group && typeof data.group.budget === 'undefined') {
+    data.group.budget = null;
+  }
 
   // Backward compatibility migration for legacy settlements without payments history
   data.settlements.forEach(s => {

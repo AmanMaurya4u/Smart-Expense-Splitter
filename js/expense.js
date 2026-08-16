@@ -392,6 +392,42 @@ function toggleSettlementStatus(appState, settlementId) {
   return { success: true, settlement };
 }
 
+/**
+ * Sets or updates the current group's budget spending limit.
+ * 
+ * @param {Object} appState 
+ * @param {number|string} budgetAmount 
+ * @returns {{ success: boolean, error?: string, budget?: number }}
+ */
+function setGroupBudget(appState, budgetAmount) {
+  if (!appState.group) {
+    return { success: false, error: 'No active group found.' };
+  }
+
+  const validation = calcModule.validateBudgetAmount(budgetAmount);
+  if (!validation.isValid) {
+    return { success: false, error: validation.error };
+  }
+
+  appState.group.budget = validation.amount;
+  storeModule.saveData(appState);
+  return { success: true, budget: validation.amount };
+}
+
+/**
+ * Removes/disables the budget limit for the current group.
+ * 
+ * @param {Object} appState 
+ * @returns {{ success: boolean }}
+ */
+function removeGroupBudget(appState) {
+  if (appState.group) {
+    appState.group.budget = null;
+    storeModule.saveData(appState);
+  }
+  return { success: true };
+}
+
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -405,6 +441,8 @@ if (typeof module !== 'undefined' && module.exports) {
     recalculateGroupSettlements,
     addPartialPayment,
     deletePartialPayment,
-    toggleSettlementStatus
+    toggleSettlementStatus,
+    setGroupBudget,
+    removeGroupBudget
   };
 }

@@ -529,6 +529,91 @@ function renderStatistics(appState) {
   if (avgSpendEl) avgSpendEl.textContent = `₹${avg.toFixed(2)}`;
 }
 
+/**
+ * Renders Budget Overview Widget on Dashboard
+ */
+function renderBudgetWidget(appState) {
+  const container = document.getElementById('budget-summary-widget');
+  if (!container) return;
+
+  const stats = calc.getBudgetStats ? calc.getBudgetStats(appState.group, appState.expenses) : {
+    hasBudget: false
+  };
+
+  if (!stats.hasBudget) {
+    container.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 2px;">Group Budget Overview</h3>
+          <span style="font-size: 0.85rem; color: var(--color-text-muted);">No spending budget configured for this group.</span>
+        </div>
+        <button class="btn btn-secondary btn-sm btn-open-set-budget">Set Budget</button>
+      </div>
+    `;
+    return;
+  }
+
+  let barColor = 'var(--color-primary)';
+  if (stats.isExceeded) {
+    barColor = 'var(--color-danger-text)';
+  } else if (stats.isWarning) {
+    barColor = 'var(--color-warning-text)';
+  }
+
+  const fillWidth = Math.min(100, stats.percentage);
+
+  container.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div>
+        <h3 style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          Group Budget
+          <span class="badge ${stats.isExceeded ? 'badge-danger' : (stats.isWarning ? 'badge-warning' : 'badge-success')}">
+            ${stats.percentage}% Used
+          </span>
+        </h3>
+      </div>
+      <button class="btn btn-secondary btn-sm btn-open-set-budget">Edit Budget</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md); text-align: center;">
+      <div>
+        <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Budget</div>
+        <strong style="font-size: 1rem;">₹${stats.totalBudget.toFixed(2)}</strong>
+      </div>
+      <div>
+        <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Spent</div>
+        <strong style="font-size: 1rem;">₹${stats.totalSpent.toFixed(2)}</strong>
+      </div>
+      <div>
+        <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Remaining</div>
+        <strong style="font-size: 1rem; color: ${stats.remaining > 0 ? 'var(--color-success-text)' : 'var(--color-danger-text)'};">
+          ₹${stats.remaining.toFixed(2)}
+        </strong>
+      </div>
+      <div>
+        <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Used</div>
+        <strong style="font-size: 1rem;">${stats.percentage}%</strong>
+      </div>
+    </div>
+
+    <div class="cat-bar-track" style="height: 10px; margin-top: 12px;">
+      <div class="cat-bar-fill" style="width: ${fillWidth}%; background-color: ${barColor};"></div>
+    </div>
+
+    ${stats.isExceeded ? `
+      <div style="background: var(--color-danger-bg); border: 1px solid rgba(239,68,68,0.3); color: var(--color-danger-text); padding: 10px 14px; border-radius: var(--radius-sm); margin-top: 12px; font-size: 0.85rem; font-weight: 600;">
+        🔴 Your group budget has been exceeded by <strong>₹${stats.exceededAmount.toFixed(2)}</strong>.
+      </div>
+    ` : ''}
+
+    ${stats.isWarning ? `
+      <div style="background: var(--color-warning-bg); border: 1px solid rgba(245,158,11,0.3); color: var(--color-warning-text); padding: 10px 14px; border-radius: var(--radius-sm); margin-top: 12px; font-size: 0.85rem; font-weight: 600;">
+        ⚠️ You have used <strong>${stats.percentage}%</strong> of your group budget.
+      </div>
+    ` : ''}
+  `;
+}
+
 // Utility HTML escape helper to prevent XSS
 function escapeHtml(str) {
   return String(str || '')
@@ -554,6 +639,7 @@ if (typeof module !== 'undefined' && module.exports) {
     renderMembersList,
     renderSettlementsList,
     renderStatistics,
+    renderBudgetWidget,
     escapeHtml
   };
 }

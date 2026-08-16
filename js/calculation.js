@@ -253,6 +253,73 @@ function validatePartialPayment(amount, remainingAmount) {
   };
 }
 
+/**
+ * Calculates budget overview statistics for the current group.
+ * 
+ * @param {Object} group - Group object with optional budget property
+ * @param {Array<Object>} expenses - Array of group expense records
+ * @returns {{ hasBudget: boolean, totalBudget: number, totalSpent: number, remaining: number, percentage: number, isWarning: boolean, isExceeded: boolean, exceededAmount: number }}
+ */
+function getBudgetStats(group, expenses) {
+  const totalSpentCents = (expenses || []).reduce((acc, exp) => {
+    return acc + Math.round((parseFloat(exp.amount) || 0) * 100);
+  }, 0);
+
+  const totalSpent = totalSpentCents / 100;
+
+  if (!group || typeof group.budget !== 'number' || group.budget <= 0) {
+    return {
+      hasBudget: false,
+      totalBudget: 0,
+      totalSpent,
+      remaining: 0,
+      percentage: 0,
+      isWarning: false,
+      isExceeded: false,
+      exceededAmount: 0
+    };
+  }
+
+  const totalBudgetCents = Math.round(group.budget * 100);
+  const totalBudget = totalBudgetCents / 100;
+  const remainingCents = Math.max(0, totalBudgetCents - totalSpentCents);
+  const remaining = remainingCents / 100;
+
+  const percentage = totalBudgetCents > 0 ? Math.round((totalSpentCents / totalBudgetCents) * 1000) / 10 : 0;
+  const isExceeded = totalSpentCents > totalBudgetCents;
+  const isWarning = percentage >= 80 && !isExceeded;
+  const exceededAmount = isExceeded ? (totalSpentCents - totalBudgetCents) / 100 : 0;
+
+  return {
+    hasBudget: true,
+    totalBudget,
+    totalSpent,
+    remaining,
+    percentage,
+    isWarning,
+    isExceeded,
+    exceededAmount
+  };
+}
+
+/**
+ * Validates group budget input amount.
+ * 
+ * @param {number|string} amount 
+ * @returns {{ isValid: boolean, error?: string, amount?: number }}
+ */
+function validateBudgetAmount(amount) {
+  const num = parseFloat(amount);
+  if (isNaN(num) || num <= 0) {
+    return { isValid: false, error: 'Budget amount must be greater than ₹0.' };
+  }
+
+  return {
+    isValid: true,
+    amount: Math.round(num * 100) / 100
+  };
+}
+
 // Universal module export support (Node.js & Browser)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -262,6 +329,8 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateBalances,
     calculateSettlements,
     getSettlementPaymentStats,
-    validatePartialPayment
+    validatePartialPayment,
+    getBudgetStats,
+    validateBudgetAmount
   };
 }

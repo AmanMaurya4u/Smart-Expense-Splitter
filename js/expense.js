@@ -1,15 +1,43 @@
 /**
- * Smart Expense Splitter - Expense & Member Business Logic Manager
- * Connects CRUD operations with pure calculation functions and storage persistence.
+ * Appends a new activity record to the timeline ring buffer (max 100 items).
+ * 
+ * @param {Object} appState 
+ * @param {Object} activityData - { type, category, message, actor, amount, relatedEntityId }
  */
+function logActivity(appState, activityData) {
+  if (!Array.isArray(appState.activities)) {
+    appState.activities = [];
+  }
 
-// Universal import fallback for calculation and storage if running in Node.js
-let calcModule = typeof window !== 'undefined' ? window : {};
-let storeModule = typeof window !== 'undefined' ? window : {};
+  const activityRecord = {
+    id: `act_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    type: activityData.type || 'info',
+    category: activityData.category || 'all',
+    message: activityData.message || '',
+    actor: activityData.actor || null,
+    amount: typeof activityData.amount === 'number' ? activityData.amount : null,
+    relatedEntityId: activityData.relatedEntityId || null,
+    timestamp: new Date().toISOString()
+  };
 
-if (typeof module !== 'undefined' && module.exports) {
-  calcModule = require('./calculation.js');
-  storeModule = require('./storage.js');
+  appState.activities.unshift(activityRecord);
+
+  // Maintain ring-buffer limit of 100 items
+  if (appState.activities.length > 100) {
+    appState.activities = appState.activities.slice(0, 100);
+  }
+}
+
+/**
+ * Clears activity timeline records without deleting group expenses or members.
+ * 
+ * @param {Object} appState 
+ * @returns {{ success: boolean }}
+ */
+function clearActivityHistory(appState) {
+  appState.activities = [];
+  storeModule.saveData(appState);
+  return { success: true };
 }
 
 /**
@@ -27,9 +55,16 @@ function createGroup(appState, name) {
   appState.group = {
     id: `group_${Date.now()}`,
     name: trimmedName,
+    budget: null,
     currentUserId: null,
     createdAt: new Date().toISOString()
   };
+
+  logActivity(appState, {
+    type: 'group_created',
+    category: 'all',
+    message: `Group "${trimmedName}" was created`
+  });
 
   storeModule.saveData(appState);
   return { success: true, group: appState.group };
@@ -70,6 +105,14 @@ function addMember(appState, name, contact = '') {
     appState.group.currentUserId = newMember.id;
   }
 
+  logActivity(appState, {
+    type: 'member_added',
+    category: 'members',
+    message: `${trimmedName} joined the group`,
+    actor: trimmedName,
+    relatedEntityId: newMember.id
+  });
+
   recalculateGroupSettlements(appState);
   storeModule.saveData(appState);
 
@@ -99,12 +142,23 @@ function removeMember(appState, memberId) {
     return { success: false, error: 'Cannot remove — member has expense history.' };
   }
 
+  const memberObj = appState.members.find(m => m.id === memberId);
+  const memberName = memberObj ? memberObj.name : 'Member';
+
   appState.members = appState.members.filter(m => m.id !== memberId);
 
   // Re-assign current user reference if deleted
   if (appState.group && appState.group.currentUserId === memberId) {
     appState.group.currentUserId = appState.members.length > 0 ? appState.members[0].id : null;
   }
+
+  logActivity(appState, {
+    type: 'member_removed',
+    category: 'members',
+    message: `${memberName} was removed from the group`,
+    actor: memberName,
+    relatedEntityId: memberId
+  });
 
   recalculateGroupSettlements(appState);
   storeModule.saveData(appState);
@@ -149,6 +203,9 @@ function addExpense(appState, expenseData) {
     }
   }
 
+  const payerObj = appState.members.find(m => m.id === paidBy);
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+
   const newExpense = {
     id: `expense_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     title: title.trim(),
@@ -164,6 +221,15 @@ function addExpense(appState, expenseData) {
   };
 
   appState.expenses.unshift(newExpense); // Newest first
+
+  logActivity(appState, {
+    type: 'expense_added',
+    category: 'expenses',
+    message: `${paidByName} added "${newExpense.title}"`,
+    actor: paidByName,
+    amount: newExpense.amount,
+    relatedEntityId: newExpense.id
+  });
 
   recalculateGroupSettlements(appState);
   storeModule.saveData(appState);
@@ -214,6 +280,9 @@ function editExpense(appState, expenseId, updatedData) {
     }
   }
 
+  const payerObj = appState.members.find(m => m.id === paidBy);
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+
   appState.expenses[index] = {
     ...appState.expenses[index],
     title: title.trim(),
@@ -226,6 +295,15 @@ function editExpense(appState, expenseId, updatedData) {
     date: date || new Date().toISOString().split('T')[0],
     updatedAt: new Date().toISOString()
   };
+
+  logActivity(appState, {
+    type: 'expense_edited',
+    category: 'expenses',
+    message: `${paidByName} edited "${title.trim()}"`,
+    actor: paidByName,
+    amount: Math.round(numAmount * 100) / 100,
+    relatedEntityId: expenseId
+  });
 
   recalculateGroupSettlements(appState);
   storeModule.saveData(appState);
@@ -240,7 +318,19 @@ function editExpense(appState, expenseId, updatedData) {
  * @returns {{ success: boolean }}
  */
 function deleteExpense(appState, expenseId) {
+  const targetExp = appState.expenses.find(e => e.id === expenseId);
+  const title = targetExp ? targetExp.title : 'Expense';
+  const amt = targetExp ? targetExp.amount : null;
+
   appState.expenses = appState.expenses.filter(e => e.id !== expenseId);
+
+  logActivity(appState, {
+    type: 'expense_deleted',
+    category: 'expenses',
+    message: `Expense "${title}" was deleted`,
+    amount: amt,
+    relatedEntityId: expenseId
+  });
 
   recalculateGroupSettlements(appState);
   storeModule.saveData(appState);
@@ -314,6 +404,11 @@ function addPartialPayment(appState, settlementId, paymentData) {
     return { success: false, error: validation.error };
   }
 
+  const memberMap = {};
+  appState.members.forEach(m => { memberMap[m.id] = m.name; });
+  const fromName = memberMap[settlement.from] || 'Payer';
+  const toName = memberMap[settlement.to] || 'Receiver';
+
   const newPayment = {
     id: `pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     amount: validation.amount,
@@ -327,6 +422,17 @@ function addPartialPayment(appState, settlementId, paymentData) {
   const updatedStats = calcModule.getSettlementPaymentStats(settlement);
   settlement.status = updatedStats.status;
   settlement.paidAt = updatedStats.status === 'paid' ? new Date().toISOString() : null;
+
+  logActivity(appState, {
+    type: updatedStats.status === 'paid' ? 'settlement_fully_paid' : 'partial_payment_made',
+    category: 'payments',
+    message: updatedStats.status === 'paid' 
+      ? `${fromName} fully settled ₹${validation.amount.toFixed(2)} with ${toName}`
+      : `${fromName} made a partial payment of ₹${validation.amount.toFixed(2)} to ${toName}`,
+    actor: fromName,
+    amount: validation.amount,
+    relatedEntityId: settlementId
+  });
 
   storeModule.saveData(appState);
   return { success: true, settlement, payment: newPayment };
@@ -368,6 +474,11 @@ function toggleSettlementStatus(appState, settlementId) {
     return { success: false };
   }
 
+  const memberMap = {};
+  appState.members.forEach(m => { memberMap[m.id] = m.name; });
+  const fromName = memberMap[settlement.from] || 'Payer';
+  const toName = memberMap[settlement.to] || 'Receiver';
+
   const currentStats = calcModule.getSettlementPaymentStats(settlement);
 
   if (currentStats.status === 'paid' || currentStats.status === 'partially_paid') {
@@ -386,6 +497,15 @@ function toggleSettlementStatus(appState, settlementId) {
     }];
     settlement.status = 'paid';
     settlement.paidAt = new Date().toISOString();
+
+    logActivity(appState, {
+      type: 'settlement_fully_paid',
+      category: 'payments',
+      message: `${fromName} fully settled ₹${settlement.amount.toFixed(2)} with ${toName}`,
+      actor: fromName,
+      amount: settlement.amount,
+      relatedEntityId: settlementId
+    });
   }
 
   storeModule.saveData(appState);
@@ -404,12 +524,21 @@ function setGroupBudget(appState, budgetAmount) {
     return { success: false, error: 'No active group found.' };
   }
 
+  const isEdit = typeof appState.group.budget === 'number' && appState.group.budget > 0;
   const validation = calcModule.validateBudgetAmount(budgetAmount);
   if (!validation.isValid) {
     return { success: false, error: validation.error };
   }
 
   appState.group.budget = validation.amount;
+
+  logActivity(appState, {
+    type: isEdit ? 'budget_updated' : 'budget_created',
+    category: 'budget',
+    message: isEdit ? `Group budget updated to ₹${validation.amount.toFixed(2)}` : `Group budget set to ₹${validation.amount.toFixed(2)}`,
+    amount: validation.amount
+  });
+
   storeModule.saveData(appState);
   return { success: true, budget: validation.amount };
 }
@@ -423,6 +552,13 @@ function setGroupBudget(appState, budgetAmount) {
 function removeGroupBudget(appState) {
   if (appState.group) {
     appState.group.budget = null;
+
+    logActivity(appState, {
+      type: 'budget_removed',
+      category: 'budget',
+      message: `Group budget was removed`
+    });
+
     storeModule.saveData(appState);
   }
   return { success: true };
@@ -431,6 +567,8 @@ function removeGroupBudget(appState) {
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    logActivity,
+    clearActivityHistory,
     createGroup,
     addMember,
     isMemberDeletable,

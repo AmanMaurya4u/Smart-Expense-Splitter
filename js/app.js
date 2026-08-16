@@ -27,6 +27,7 @@ let deletingExpenseId = null;
 let currentFilterCategory = 'ALL';
 let currentSearchQuery = '';
 let currentSortBy = 'newest';
+let currentActivityFilterCategory = 'ALL';
 let searchDebounceTimer = null;
 
 /**
@@ -78,6 +79,7 @@ function renderFullDashboard() {
   ui.renderMembersList(appState);
   ui.renderSettlementsList(appState);
   ui.renderStatistics(appState);
+  ui.renderActivityTimeline(appState, currentActivityFilterCategory);
 }
 
 /**

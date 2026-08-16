@@ -165,6 +165,7 @@
           <button class="tab-btn" data-tab="members">Members</button>
           <button class="tab-btn" data-tab="settlements">Settlements</button>
           <button class="tab-btn" data-tab="stats">Spend Insights</button>
+          <button class="tab-btn" data-tab="activity">Activity</button>
         </nav>
 
         <button id="btn-open-add-expense" class="btn btn-primary">
@@ -279,6 +280,33 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 5: Activity Timeline -->
+      <div id="tab-activity" class="hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); flex-wrap: wrap; gap: var(--space-3);">
+          <div class="split-type-toggle" style="background: var(--color-surface); border: 1px solid var(--color-surface-border);">
+            <button type="button" class="activity-filter-btn active" data-filter="ALL">All</button>
+            <button type="button" class="activity-filter-btn" data-filter="expenses">Expenses</button>
+            <button type="button" class="activity-filter-btn" data-filter="payments">Payments</button>
+            <button type="button" class="activity-filter-btn" data-filter="members">Members</button>
+            <button type="button" class="activity-filter-btn" data-filter="budget">Budget</button>
+          </div>
+
+          <button id="btn-open-clear-activities" class="btn btn-danger btn-sm">Clear History</button>
+        </div>
+
+        <div id="activity-timeline-list" style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <!-- Dynamic Activity Items -->
+        </div>
+
+        <div id="activity-empty-state" class="empty-state hidden">
+          <div class="empty-state-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 28px; height: 28px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="empty-state-title">No activity history yet</div>
+          <p>Important group actions and transactions will appear here chronologically.</p>
         </div>
       </div>
 
@@ -482,6 +510,24 @@
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Confirm Clear Activity History Modal -->
+  <div id="modal-confirm-clear-activities" class="modal-overlay" aria-hidden="true">
+    <div class="modal-dialog" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Clear Activity History</h3>
+        <button class="btn-icon btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to clear the activity history?</p>
+        <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 8px;">Note: This will only remove activity log entries and will NOT delete any expenses, members, settlements, or budgets.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-close-modal">Cancel</button>
+        <button id="btn-confirm-clear-activities" class="btn btn-danger">Clear History</button>
+      </div>
     </div>
   </div>
 

@@ -614,6 +614,70 @@ function renderBudgetWidget(appState) {
   `;
 }
 
+/**
+ * Renders Activity Timeline history list
+ */
+function renderActivityTimeline(appState, filterCategory = 'ALL') {
+  const container = document.getElementById('activity-timeline-list');
+  const emptyState = document.getElementById('activity-empty-state');
+  if (!container) return;
+
+  let activities = [...(appState.activities || [])];
+
+  if (filterCategory !== 'ALL') {
+    activities = activities.filter(a => a.category === filterCategory);
+  }
+
+  if (activities.length === 0) {
+    container.classList.add('hidden');
+    if (emptyState) emptyState.classList.remove('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+  if (emptyState) emptyState.classList.add('hidden');
+
+  const typeIcons = {
+    'group_created': '🏷️',
+    'member_added': '👤',
+    'member_removed': '❌',
+    'expense_added': '💸',
+    'expense_edited': '✏️',
+    'expense_deleted': '🗑️',
+    'payment_made': '💰',
+    'partial_payment_made': '💰',
+    'settlement_fully_paid': '✓',
+    'budget_created': '👛',
+    'budget_updated': '👛',
+    'budget_removed': '🚫'
+  };
+
+  container.innerHTML = activities.map(act => {
+    const icon = typeIcons[act.type] || '📌';
+    const dateStr = act.timestamp ? new Date(act.timestamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    const hasAmount = typeof act.amount === 'number' && act.amount > 0;
+
+    return `
+      <div class="card" style="padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: var(--radius-md);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--color-bg-subtle); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">
+            ${icon}
+          </div>
+          <div>
+            <div style="font-size: 0.95rem; font-weight: 500; color: var(--color-text-main);">${escapeHtml(act.message)}</div>
+            <div style="font-size: 0.75rem; color: var(--color-text-subtle); margin-top: 2px;">${dateStr}</div>
+          </div>
+        </div>
+        ${hasAmount ? `
+          <span class="badge" style="background: var(--color-primary-light); color: var(--color-primary); font-weight: 600; font-size: 0.85rem;">
+            ₹${act.amount.toFixed(2)}
+          </span>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
 // Utility HTML escape helper to prevent XSS
 function escapeHtml(str) {
   return String(str || '')
@@ -640,6 +704,7 @@ if (typeof module !== 'undefined' && module.exports) {
     renderSettlementsList,
     renderStatistics,
     renderBudgetWidget,
+    renderActivityTimeline,
     escapeHtml
   };
 }

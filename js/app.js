@@ -6,7 +6,7 @@
 // Universal dependencies resolution
 const storage = typeof window !== 'undefined' && window.loadData ? window : (typeof require !== 'undefined' ? require('./storage.js') : {});
 const expense = typeof window !== 'undefined' && window.addExpense ? window : (typeof require !== 'undefined' ? require('./expense.js') : {});
-const ui = typeof window !== 'undefined' && window.renderDashboard ? window : (typeof require !== 'undefined' ? require('./ui.js') : {});
+const ui = typeof window !== 'undefined' && window.showScreen ? window : (typeof require !== 'undefined' ? require('./ui.js') : {});
 const calcLogic = typeof window !== 'undefined' && window.calculateCustomSplit ? window : (typeof require !== 'undefined' ? require('./calculation.js') : {});
 
 // Global State Instance

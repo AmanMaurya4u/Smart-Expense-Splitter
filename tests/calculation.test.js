@@ -218,6 +218,37 @@ const bValValid = validateBudgetAmount(20000);
 assert(bValValid.isValid === true, 'Positive budget (20000) is valid');
 assert(bValValid.amount === 20000, 'Validated amount matches input');
 
+// -----------------------------------------------------------------------------
+// Test 11: Activity Logging & 100-Item Ring Buffer Limit
+// -----------------------------------------------------------------------------
+console.log('\nTest Suite 11: Activity Logging & Ring Buffer Limit');
+const { logActivity, clearActivityHistory } = require('../js/expense.js');
+
+const dummyState = {
+  version: 1,
+  group: { id: 'g1', name: 'Test' },
+  members: [],
+  expenses: [],
+  settlements: [],
+  activities: []
+};
+
+logActivity(dummyState, { type: 'group_created', category: 'all', message: 'Group Test created' });
+assert(dummyState.activities.length === 1, 'First activity unshifted');
+assert(dummyState.activities[0].type === 'group_created', 'Newest activity is at index 0');
+
+// Push 105 activities to test ring buffer trim limit (100 max)
+for (let i = 1; i <= 105; i++) {
+  logActivity(dummyState, { type: 'expense_added', category: 'expenses', message: `Expense ${i}` });
+}
+
+assert(dummyState.activities.length === 100, 'Activity list strictly capped at 100 items');
+assert(dummyState.activities[0].message === 'Expense 105', 'Newest activity is Expense 105');
+
+// Clear activity history test
+clearActivityHistory(dummyState);
+assert(dummyState.activities.length === 0, 'clearActivityHistory empties activities list');
+
 // Summary Report
 console.log(`\n=================================================`);
 console.log(`Test Execution Complete: ${passCount} Passed, ${failCount} Failed`);

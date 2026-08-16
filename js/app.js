@@ -249,7 +249,7 @@ function bindEventListeners() {
       e.target.classList.add('active');
 
       const targetTab = e.target.getAttribute('data-tab');
-      const tabs = ['tab-expenses', 'tab-members', 'tab-settlements', 'tab-stats'];
+      const tabs = ['tab-expenses', 'tab-members', 'tab-settlements', 'tab-stats', 'tab-activity'];
       tabs.forEach(t => {
         const el = document.getElementById(t);
         if (el) {
@@ -262,6 +262,35 @@ function bindEventListeners() {
       });
     });
   });
+
+  // Activity Timeline Category Filters
+  const activityFilterBtns = document.querySelectorAll('.activity-filter-btn');
+  activityFilterBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      activityFilterBtns.forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      currentActivityFilterCategory = e.target.getAttribute('data-filter');
+      ui.renderActivityTimeline(appState, currentActivityFilterCategory);
+    });
+  });
+
+  // Clear Activity History Trigger & Confirm
+  const btnOpenClearActivities = document.getElementById('btn-open-clear-activities');
+  if (btnOpenClearActivities) {
+    btnOpenClearActivities.addEventListener('click', () => {
+      ui.openModal('modal-confirm-clear-activities');
+    });
+  }
+
+  const btnConfirmClearActivities = document.getElementById('btn-confirm-clear-activities');
+  if (btnConfirmClearActivities) {
+    btnConfirmClearActivities.addEventListener('click', () => {
+      expense.clearActivityHistory(appState);
+      ui.closeModal('modal-confirm-clear-activities');
+      renderFullDashboard();
+      ui.showToast('Activity history cleared', 'info');
+    });
+  }
 
   // Category Filter
   const filterCatSelect = document.getElementById('select-filter-category');

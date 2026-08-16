@@ -1,4 +1,18 @@
 /**
+ * Smart Expense Splitter - Expense & Member Business Logic Manager
+ * Connects CRUD operations with pure calculation functions and storage persistence.
+ */
+
+// Universal import fallback for calculation and storage if running in Node.js
+let calcModule = typeof window !== 'undefined' ? window : {};
+let storeModule = typeof window !== 'undefined' ? window : {};
+
+if (typeof module !== 'undefined' && module.exports) {
+  calcModule = require('./calculation.js');
+  storeModule = require('./storage.js');
+}
+
+/**
  * Appends a new activity record to the timeline ring buffer (max 100 items).
  * 
  * @param {Object} appState 

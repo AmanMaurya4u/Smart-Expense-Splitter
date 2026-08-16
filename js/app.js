@@ -148,8 +148,9 @@ function bindEventListeners() {
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
       appState.theme = appState.theme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', appState.theme);
+      ui.renderHeader(appState);
       storage.saveData(appState);
+      ui.showToast(`Switched to ${appState.theme === 'dark' ? 'Dark' : 'Light'} Mode`, 'info');
     });
   }
 

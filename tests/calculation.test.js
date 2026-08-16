@@ -164,6 +164,60 @@ assert(valExceed.isValid === false, 'Payment exceeding remaining (700 > 600) is 
 const valValid = validatePartialPayment(400, 600);
 assert(valValid.isValid === true, 'Payment within remaining (400 <= 600) is valid');
 
+// -----------------------------------------------------------------------------
+// Test 9: Group Budget Calculations & Warnings
+// -----------------------------------------------------------------------------
+console.log('\nTest Suite 9: Group Budget Calculation Logic');
+const { getBudgetStats, validateBudgetAmount } = require('../js/calculation.js');
+
+const grpNoBudget = { id: 'g1', name: 'Goa Trip' };
+const sampleExpenses = [
+  { amount: 2000 },
+  { amount: 8000 },
+  { amount: 1000 }
+];
+
+let bStats = getBudgetStats(grpNoBudget, sampleExpenses);
+assert(bStats.hasBudget === false, 'Unconfigured budget returns hasBudget: false');
+assert(bStats.totalSpent === 11000, 'Total spent is correctly summed as 11000');
+
+// Budget = 20000, Spent = 11000 (55%) -> Normal
+const grpWithBudget = { id: 'g1', name: 'Goa Trip', budget: 20000 };
+bStats = getBudgetStats(grpWithBudget, sampleExpenses);
+assert(bStats.hasBudget === true, 'Configured budget returns hasBudget: true');
+assert(bStats.totalBudget === 20000, 'Total budget is 20000');
+assert(bStats.remaining === 9000, 'Remaining budget is 9000');
+assert(bStats.percentage === 55, 'Percentage used is 55%');
+assert(bStats.isWarning === false, '55% usage does not trigger warning');
+assert(bStats.isExceeded === false, '55% usage is not exceeded');
+
+// Spent = 16500 (82.5%) -> Warning
+const warningExpenses = [...sampleExpenses, { amount: 5500 }];
+bStats = getBudgetStats(grpWithBudget, warningExpenses);
+assert(bStats.percentage === 82.5, 'Percentage used is 82.5%');
+assert(bStats.isWarning === true, '82.5% usage triggers 80%+ warning status');
+assert(bStats.isExceeded === false, '82.5% usage is not exceeded');
+
+// Spent = 21200 (106%) -> Exceeded
+const exceededExpenses = [...sampleExpenses, { amount: 10200 }];
+bStats = getBudgetStats(grpWithBudget, exceededExpenses);
+assert(bStats.isExceeded === true, 'Spent exceeding budget triggers isExceeded: true');
+assert(bStats.exceededAmount === 1200, 'Exceeded amount is correctly calculated as 1200');
+
+// -----------------------------------------------------------------------------
+// Test 10: Budget Validation Rules
+// -----------------------------------------------------------------------------
+console.log('\nTest Suite 10: Budget Validation Rules');
+const bValZero = validateBudgetAmount(0);
+assert(bValZero.isValid === false, '₹0 budget is rejected');
+
+const bValNeg = validateBudgetAmount(-100);
+assert(bValNeg.isValid === false, 'Negative budget is rejected');
+
+const bValValid = validateBudgetAmount(20000);
+assert(bValValid.isValid === true, 'Positive budget (20000) is valid');
+assert(bValValid.amount === 20000, 'Validated amount matches input');
+
 // Summary Report
 console.log(`\n=================================================`);
 console.log(`Test Execution Complete: ${passCount} Passed, ${failCount} Failed`);

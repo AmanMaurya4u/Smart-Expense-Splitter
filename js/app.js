@@ -72,6 +72,7 @@ function navigateInitialScreen() {
  */
 function renderFullDashboard() {
   ui.renderHeader(appState);
+  ui.renderBudgetWidget(appState);
   ui.renderSummaryCards(appState);
   ui.renderExpenseList(appState, currentFilterCategory, currentSearchQuery, currentSortBy);
   ui.renderMembersList(appState);
@@ -335,8 +336,30 @@ function bindEventListeners() {
         renderFullDashboard();
         ui.showToast('Payment record removed', 'info');
       }
+    } else if (e.target.classList.contains('btn-open-set-budget')) {
+      openSetBudgetModal();
     }
   });
+
+  // Set Budget Form Submission
+  const formSetBudget = document.getElementById('form-set-budget');
+  if (formSetBudget) {
+    formSetBudget.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleSetBudgetSubmit();
+    });
+  }
+
+  // Remove Budget Button
+  const btnRemoveBudget = document.getElementById('btn-remove-budget');
+  if (btnRemoveBudget) {
+    btnRemoveBudget.addEventListener('click', () => {
+      expense.removeGroupBudget(appState);
+      ui.closeModal('modal-set-budget');
+      renderFullDashboard();
+      ui.showToast('Group budget removed', 'info');
+    });
+  }
 
   // Make Payment Form Submission
   const formMakePayment = document.getElementById('form-make-payment');
@@ -736,4 +759,50 @@ function handleMakePaymentSubmit() {
   ui.closeModal('modal-make-payment');
   renderFullDashboard();
   ui.showToast(`Payment of ₹${parseFloat(amount).toFixed(2)} recorded!`, 'success');
+}
+
+/**
+ * Prepares and opens Set Group Budget modal
+ */
+function openSetBudgetModal() {
+  const modalTitle = document.getElementById('modal-budget-title');
+  const inputBudget = document.getElementById('input-group-budget');
+  const btnRemove = document.getElementById('btn-remove-budget');
+
+  if (!inputBudget) return;
+  ui.clearFieldError(inputBudget);
+
+  const currentBudget = appState.group ? appState.group.budget : null;
+
+  if (currentBudget && currentBudget > 0) {
+    if (modalTitle) modalTitle.textContent = 'Edit Group Budget';
+    inputBudget.value = currentBudget;
+    if (btnRemove) btnRemove.classList.remove('hidden');
+  } else {
+    if (modalTitle) modalTitle.textContent = 'Set Group Budget';
+    inputBudget.value = '';
+    if (btnRemove) btnRemove.classList.add('hidden');
+  }
+
+  ui.openModal('modal-set-budget');
+}
+
+/**
+ * Handles Set Group Budget form submission
+ */
+function handleSetBudgetSubmit() {
+  const inputBudget = document.getElementById('input-group-budget');
+  if (!inputBudget) return;
+
+  ui.clearFieldError(inputBudget);
+
+  const res = expense.setGroupBudget(appState, inputBudget.value);
+  if (!res.success) {
+    ui.showFieldError(inputBudget, res.error);
+    return;
+  }
+
+  ui.closeModal('modal-set-budget');
+  renderFullDashboard();
+  ui.showToast(`Group budget set to ₹${res.budget.toFixed(2)}`, 'success');
 }

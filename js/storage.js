@@ -101,6 +101,22 @@ function migrateData(data) {
   if (!Array.isArray(data.settlements)) data.settlements = [];
   if (!data.theme) data.theme = 'light';
 
+  // Backward compatibility migration for legacy settlements without payments history
+  data.settlements.forEach(s => {
+    if (!Array.isArray(s.payments)) {
+      s.payments = [];
+      if (s.status === 'paid' && s.amount > 0) {
+        s.payments.push({
+          id: `pay_legacy_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          amount: s.amount,
+          paymentMethod: 'Other',
+          note: 'Legacy full payment',
+          date: s.paidAt ? s.paidAt.split('T')[0] : new Date().toISOString().split('T')[0]
+        });
+      }
+    }
+  });
+
   return data;
 }
 

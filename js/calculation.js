@@ -185,6 +185,74 @@ function calculateSettlements(balancesMap) {
   return settlements;
 }
 
+/**
+ * Calculates payment stats for a settlement.
+ * 
+ * @param {Object} settlement - Settlement object with amount and optional payments array
+ * @returns {{ totalDue: number, totalPaid: number, remainingAmount: number, status: string, payments: Array }}
+ */
+function getSettlementPaymentStats(settlement) {
+  if (!settlement) {
+    return { totalDue: 0, totalPaid: 0, remainingAmount: 0, status: 'pending', payments: [] };
+  }
+
+  const totalDue = Math.round((parseFloat(settlement.amount) || 0) * 100) / 100;
+  const payments = Array.isArray(settlement.payments) ? settlement.payments : [];
+
+  const totalPaidCents = payments.reduce((acc, p) => {
+    return acc + Math.round((parseFloat(p.amount) || 0) * 100);
+  }, 0);
+
+  const totalPaid = totalPaidCents / 100;
+  const remainingCents = Math.max(0, Math.round(totalDue * 100) - totalPaidCents);
+  const remainingAmount = remainingCents / 100;
+
+  let status = 'pending';
+  if (remainingCents === 0 || totalPaid >= totalDue) {
+    status = 'paid';
+  } else if (totalPaidCents > 0) {
+    status = 'partially_paid';
+  }
+
+  return {
+    totalDue,
+    totalPaid,
+    remainingAmount,
+    status,
+    payments
+  };
+}
+
+/**
+ * Validates a partial payment amount against remaining balance.
+ * 
+ * @param {number|string} amount - Proposed payment amount
+ * @param {number} remainingAmount - Outstanding remaining amount on settlement
+ * @returns {{ isValid: boolean, error?: string, amount?: number }}
+ */
+function validatePartialPayment(amount, remainingAmount) {
+  const num = parseFloat(amount);
+  if (isNaN(num) || num <= 0) {
+    return { isValid: false, error: 'Payment amount must be greater than ₹0.' };
+  }
+
+  const numCents = Math.round(num * 100);
+  const remCents = Math.round((parseFloat(remainingAmount) || 0) * 100);
+
+  if (numCents > remCents) {
+    const formattedRem = (remCents / 100).toFixed(2);
+    return {
+      isValid: false,
+      error: `Payment amount cannot be greater than remaining amount (₹${formattedRem}).`
+    };
+  }
+
+  return {
+    isValid: true,
+    amount: numCents / 100
+  };
+}
+
 // Universal module export support (Node.js & Browser)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -192,6 +260,8 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateEqualSplit,
     calculateCustomSplit,
     calculateBalances,
-    calculateSettlements
+    calculateSettlements,
+    getSettlementPaymentStats,
+    validatePartialPayment
   };
 }

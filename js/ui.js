@@ -351,7 +351,7 @@ function renderMembersList(appState) {
 }
 
 /**
- * Renders Settlement Suggestions Grid
+ * Renders Settlement Suggestions Grid with Partial Payment Support
  */
 function renderSettlementsList(appState) {
   const container = document.getElementById('settlements-grid');
@@ -374,17 +374,55 @@ function renderSettlementsList(appState) {
   container.innerHTML = settlements.map(s => {
     const fromName = memberMap[s.from] || 'Unknown';
     const toName = memberMap[s.to] || 'Unknown';
-    const isPaid = s.status === 'paid';
+
+    const stats = calc.getSettlementPaymentStats ? calc.getSettlementPaymentStats(s) : {
+      totalDue: s.amount,
+      totalPaid: 0,
+      remainingAmount: s.amount,
+      status: s.status || 'pending',
+      payments: s.payments || []
+    };
+
+    const isFullyPaid = stats.status === 'paid';
+    const isPartiallyPaid = stats.status === 'partially_paid';
+
+    let badgeClass = 'badge-danger';
+    let badgeText = 'Pending';
+    if (isFullyPaid) {
+      badgeClass = 'badge-success';
+      badgeText = '✓ Fully Paid';
+    } else if (isPartiallyPaid) {
+      badgeClass = 'badge-warning';
+      badgeText = 'Partially Paid';
+    }
+
+    const historyHtml = (stats.payments && stats.payments.length > 0) ? `
+      <div class="payment-history-wrap" style="margin-top: 12px; border-top: 1px dashed var(--color-surface-border); padding-top: 8px;">
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); margin-bottom: 6px;">Payment History (${stats.payments.length})</div>
+        ${stats.payments.map(p => `
+          <div style="display: flex; justify-content: space-between; align-items: center; background: var(--color-bg-subtle); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.8rem; margin-bottom: 4px;">
+            <div>
+              <strong>₹${parseFloat(p.amount).toFixed(2)}</strong> via <span class="badge" style="padding: 2px 6px; font-size: 0.7rem;">${escapeHtml(p.paymentMethod || 'UPI')}</span>
+              ${p.note ? `<div style="font-size: 0.75rem; color: var(--color-text-subtle); margin-top: 2px;">"${escapeHtml(p.note)}"</div>` : ''}
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="color: var(--color-text-subtle); font-size: 0.75rem;">${p.date || ''}</span>
+              <button type="button" class="btn-delete-payment" data-settlement-id="${s.id}" data-payment-id="${p.id}" title="Remove payment record" style="background:none; border:none; color:var(--color-danger-text); cursor:pointer; font-weight:bold;">✕</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
 
     return `
-      <div class="settlement-card ${isPaid ? 'settled' : ''}">
+      <div class="settlement-card ${isFullyPaid ? 'settled' : ''}">
         <div class="settlement-flow">
           <div>
             <div style="font-size: 0.8rem; color: var(--color-text-muted);">Payer</div>
             <strong style="font-size: 1rem;">${escapeHtml(fromName)}</strong>
           </div>
           <div class="settlement-arrow">
-            <span class="settlement-amount">₹${s.amount.toFixed(2)}</span>
+            <span class="settlement-amount">₹${stats.totalDue.toFixed(2)}</span>
             <span style="font-size: 0.75rem;">➔ pays ➔</span>
           </div>
           <div>
@@ -392,14 +430,26 @@ function renderSettlementsList(appState) {
             <strong style="font-size: 1rem;">${escapeHtml(toName)}</strong>
           </div>
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
-          <span class="badge ${isPaid ? 'badge-success' : 'badge-danger'}">
-            ${isPaid ? '✓ Paid' : 'Pending'}
-          </span>
-          <button class="btn btn-secondary btn-sm btn-toggle-settlement" data-id="${s.id}">
-            ${isPaid ? 'Mark as Unpaid' : 'Mark as Paid'}
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 0.85rem;">
+          <div>
+            ${isFullyPaid ? '<span style="color: var(--color-success-text); font-weight: 600;">✓ Fully Paid</span>' : ''}
+            ${isPartiallyPaid ? `<span style="color: var(--color-danger-text); font-weight: 600;">₹${stats.remainingAmount.toFixed(2)} remaining</span> <span style="color: var(--color-success-text); font-size: 0.8rem;">(₹${stats.totalPaid.toFixed(2)} paid)</span>` : ''}
+            ${!isFullyPaid && !isPartiallyPaid ? `<span style="color: var(--color-danger-text); font-weight: 600;">₹${stats.remainingAmount.toFixed(2)} remaining</span>` : ''}
+          </div>
+          <span class="badge ${badgeClass}">${badgeText}</span>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          ${!isFullyPaid ? `
+            <button class="btn btn-primary btn-sm btn-open-make-payment" data-id="${s.id}" style="flex:1;">Make Payment</button>
+          ` : ''}
+          <button class="btn btn-secondary btn-sm btn-toggle-settlement" data-id="${s.id}" style="${isFullyPaid ? 'width: 100%;' : ''}">
+            ${isFullyPaid ? 'Mark as Unpaid' : 'Mark Fully Paid'}
           </button>
         </div>
+
+        ${historyHtml}
       </div>
     `;
   }).join('');

@@ -324,8 +324,28 @@ function bindEventListeners() {
         renderFullDashboard();
         ui.showToast(`Settlement marked as ${res.settlement.status}`, 'success');
       }
+    } else if (e.target.classList.contains('btn-open-make-payment')) {
+      const id = e.target.getAttribute('data-id');
+      openMakePaymentModal(id);
+    } else if (e.target.classList.contains('btn-delete-payment')) {
+      const settlementId = e.target.getAttribute('data-settlement-id');
+      const paymentId = e.target.getAttribute('data-payment-id');
+      const res = expense.deletePartialPayment(appState, settlementId, paymentId);
+      if (res.success) {
+        renderFullDashboard();
+        ui.showToast('Payment record removed', 'info');
+      }
     }
   });
+
+  // Make Payment Form Submission
+  const formMakePayment = document.getElementById('form-make-payment');
+  if (formMakePayment) {
+    formMakePayment.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleMakePaymentSubmit();
+    });
+  }
 
   // Modal Delete Confirm Button
   const btnConfirmDelete = document.getElementById('btn-confirm-delete-expense');
@@ -633,4 +653,87 @@ function handleExpenseFormSubmit() {
   ui.closeModal('modal-expense');
   renderFullDashboard();
   ui.showToast(`Expense ${editingExpenseId ? 'updated' : 'added'} successfully`, 'success');
+}
+
+// Active state for partial payment modal
+let activePaymentSettlementId = null;
+
+/**
+ * Prepares and opens Make Payment modal
+ */
+function openMakePaymentModal(settlementId) {
+  activePaymentSettlementId = settlementId;
+  const settlement = (appState.settlements || []).find(s => s.id === settlementId);
+  if (!settlement) return;
+
+  const memberMap = {};
+  (appState.members || []).forEach(m => { memberMap[m.id] = m.name; });
+
+  const fromName = memberMap[settlement.from] || 'Unknown';
+  const toName = memberMap[settlement.to] || 'Unknown';
+
+  const stats = calcLogic.getSettlementPaymentStats ? calcLogic.getSettlementPaymentStats(settlement) : {
+    totalDue: settlement.amount,
+    remainingAmount: settlement.amount
+  };
+
+  const flowEl = document.getElementById('payment-modal-flow');
+  const dueEl = document.getElementById('payment-modal-total-due');
+  const remEl = document.getElementById('payment-modal-remaining');
+  const inputAmount = document.getElementById('input-payment-amount');
+  const selectMethod = document.getElementById('select-payment-method');
+  const inputDate = document.getElementById('input-payment-date');
+  const inputNote = document.getElementById('input-payment-note');
+
+  if (flowEl) flowEl.textContent = `${fromName} ➔ pays ➔ ${toName}`;
+  if (dueEl) dueEl.textContent = `₹${stats.totalDue.toFixed(2)}`;
+  if (remEl) remEl.textContent = `₹${stats.remainingAmount.toFixed(2)}`;
+
+  if (inputAmount) {
+    ui.clearFieldError(inputAmount);
+    inputAmount.value = '';
+    inputAmount.setAttribute('max', stats.remainingAmount);
+  }
+  if (selectMethod) selectMethod.value = 'UPI';
+  if (inputDate) inputDate.value = new Date().toISOString().split('T')[0];
+  if (inputNote) inputNote.value = '';
+
+  ui.openModal('modal-make-payment');
+}
+
+/**
+ * Handles Partial Payment form submission
+ */
+function handleMakePaymentSubmit() {
+  if (!activePaymentSettlementId) return;
+
+  const inputAmount = document.getElementById('input-payment-amount');
+  const selectMethod = document.getElementById('select-payment-method');
+  const inputDate = document.getElementById('input-payment-date');
+  const inputNote = document.getElementById('input-payment-note');
+
+  if (!inputAmount) return;
+  ui.clearFieldError(inputAmount);
+
+  const amount = inputAmount.value;
+  const paymentMethod = selectMethod ? selectMethod.value : 'UPI';
+  const date = inputDate ? inputDate.value : new Date().toISOString().split('T')[0];
+  const note = inputNote ? inputNote.value : '';
+
+  const res = expense.addPartialPayment(appState, activePaymentSettlementId, {
+    amount,
+    paymentMethod,
+    date,
+    note
+  });
+
+  if (!res.success) {
+    ui.showFieldError(inputAmount, res.error);
+    return;
+  }
+
+  activePaymentSettlementId = null;
+  ui.closeModal('modal-make-payment');
+  renderFullDashboard();
+  ui.showToast(`Payment of ₹${parseFloat(amount).toFixed(2)} recorded!`, 'success');
 }

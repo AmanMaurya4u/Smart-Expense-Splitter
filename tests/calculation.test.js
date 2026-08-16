@@ -113,6 +113,57 @@ const zeroBalances = {
 const zeroSettlements = calculateSettlements(zeroBalances);
 assert(zeroSettlements.length === 0, 'Zero balances result in empty settlement array');
 
+// -----------------------------------------------------------------------------
+// Test 7: Partial Payment Calculations & Status Workflow
+// -----------------------------------------------------------------------------
+console.log('\nTest Suite 7: Partial Payment Calculations');
+const { getSettlementPaymentStats, validatePartialPayment } = require('../js/calculation.js');
+
+const settlementObj = {
+  id: 'settlement_test',
+  from: 'm2',
+  to: 'm1',
+  amount: 1000,
+  payments: []
+};
+
+// Initial state: Pending
+let stats = getSettlementPaymentStats(settlementObj);
+assert(stats.status === 'pending', 'Initial status is pending');
+assert(stats.totalDue === 1000, 'Total due is 1000');
+assert(stats.totalPaid === 0, 'Total paid is 0');
+assert(stats.remainingAmount === 1000, 'Remaining amount is 1000');
+
+// After paying 400: Partially Paid
+settlementObj.payments.push({ id: 'p1', amount: 400, paymentMethod: 'UPI', date: '2026-08-16' });
+stats = getSettlementPaymentStats(settlementObj);
+assert(stats.status === 'partially_paid', 'Status transitions to partially_paid');
+assert(stats.totalPaid === 400, 'Total paid is now 400');
+assert(stats.remainingAmount === 600, 'Remaining amount is now 600');
+
+// After paying remaining 600: Fully Paid
+settlementObj.payments.push({ id: 'p2', amount: 600, paymentMethod: 'Cash', date: '2026-08-17' });
+stats = getSettlementPaymentStats(settlementObj);
+assert(stats.status === 'paid', 'Status transitions to paid');
+assert(stats.totalPaid === 1000, 'Total paid is 1000');
+assert(stats.remainingAmount === 0, 'Remaining amount is 0');
+
+// -----------------------------------------------------------------------------
+// Test 8: Partial Payment Validation Rules
+// -----------------------------------------------------------------------------
+console.log('\nTest Suite 8: Partial Payment Validations');
+const valZero = validatePartialPayment(0, 600);
+assert(valZero.isValid === false, '₹0 payment is rejected');
+
+const valNeg = validatePartialPayment(-50, 600);
+assert(valNeg.isValid === false, 'Negative payment is rejected');
+
+const valExceed = validatePartialPayment(700, 600);
+assert(valExceed.isValid === false, 'Payment exceeding remaining (700 > 600) is rejected');
+
+const valValid = validatePartialPayment(400, 600);
+assert(valValid.isValid === true, 'Payment within remaining (400 <= 600) is valid');
+
 // Summary Report
 console.log(`\n=================================================`);
 console.log(`Test Execution Complete: ${passCount} Passed, ${failCount} Failed`);

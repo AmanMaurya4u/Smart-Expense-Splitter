@@ -250,7 +250,7 @@ function deleteExpense(appState, expenseId) {
 
 /**
  * Recalculates net balances and settlement transactions for the group state.
- * Preserves paid status for identical settlement pairs if applicable.
+ * Preserves payment history for identical settlement pairs if applicable.
  * @param {Object} appState 
  */
 function recalculateGroupSettlements(appState) {
@@ -262,20 +262,27 @@ function recalculateGroupSettlements(appState) {
   const balancesMap = calcModule.calculateBalances(appState.members, appState.expenses);
   const newSettlements = calcModule.calculateSettlements(balancesMap);
 
-  // Preserve paid status for settlements with matching from, to, and amount
-  const existingPaidMap = new Map();
+  // Preserve payments history for settlements matching from and to member pair
+  const existingPaymentsMap = new Map();
   (appState.settlements || []).forEach(s => {
-    if (s.status === 'paid') {
-      const key = `${s.from}_${s.to}_${s.amount}`;
-      existingPaidMap.set(key, s.paidAt);
+    const key = `${s.from}_${s.to}`;
+    if (Array.isArray(s.payments) && s.payments.length > 0) {
+      existingPaymentsMap.set(key, s.payments);
     }
   });
 
   newSettlements.forEach(s => {
-    const key = `${s.from}_${s.to}_${s.amount}`;
-    if (existingPaidMap.has(key)) {
-      s.status = 'paid';
-      s.paidAt = existingPaidMap.get(key);
+    const key = `${s.from}_${s.to}`;
+    if (existingPaymentsMap.has(key)) {
+      s.payments = [...existingPaymentsMap.get(key)];
+      // Re-evaluates status based on payments vs new total amount due
+      const stats = calcModule.getSettlementPaymentStats(s);
+      s.status = stats.status;
+      s.paidAt = stats.status === 'paid' ? (s.paidAt || new Date().toISOString()) : null;
+    } else {
+      s.payments = [];
+      s.status = 'pending';
+      s.paidAt = null;
     }
   });
 
@@ -283,7 +290,74 @@ function recalculateGroupSettlements(appState) {
 }
 
 /**
- * Toggles a settlement's status between pending and paid.
+ * Records a new partial payment towards a settlement.
+ * 
+ * @param {Object} appState 
+ * @param {string} settlementId 
+ * @param {Object} paymentData - { amount, paymentMethod, note, date }
+ * @returns {{ success: boolean, error?: string, settlement?: Object, payment?: Object }}
+ */
+function addPartialPayment(appState, settlementId, paymentData) {
+  const settlement = (appState.settlements || []).find(s => s.id === settlementId);
+  if (!settlement) {
+    return { success: false, error: 'Settlement record not found.' };
+  }
+
+  if (!Array.isArray(settlement.payments)) {
+    settlement.payments = [];
+  }
+
+  const currentStats = calcModule.getSettlementPaymentStats(settlement);
+  const validation = calcModule.validatePartialPayment(paymentData.amount, currentStats.remainingAmount);
+
+  if (!validation.isValid) {
+    return { success: false, error: validation.error };
+  }
+
+  const newPayment = {
+    id: `pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    amount: validation.amount,
+    paymentMethod: paymentData.paymentMethod || 'UPI',
+    note: (paymentData.note || '').trim(),
+    date: paymentData.date || new Date().toISOString().split('T')[0]
+  };
+
+  settlement.payments.push(newPayment);
+
+  const updatedStats = calcModule.getSettlementPaymentStats(settlement);
+  settlement.status = updatedStats.status;
+  settlement.paidAt = updatedStats.status === 'paid' ? new Date().toISOString() : null;
+
+  storeModule.saveData(appState);
+  return { success: true, settlement, payment: newPayment };
+}
+
+/**
+ * Deletes an individual payment entry from a settlement's history.
+ * 
+ * @param {Object} appState 
+ * @param {string} settlementId 
+ * @param {string} paymentId 
+ * @returns {{ success: boolean, error?: string }}
+ */
+function deletePartialPayment(appState, settlementId, paymentId) {
+  const settlement = (appState.settlements || []).find(s => s.id === settlementId);
+  if (!settlement || !Array.isArray(settlement.payments)) {
+    return { success: false, error: 'Settlement or payment history not found.' };
+  }
+
+  settlement.payments = settlement.payments.filter(p => p.id !== paymentId);
+
+  const updatedStats = calcModule.getSettlementPaymentStats(settlement);
+  settlement.status = updatedStats.status;
+  settlement.paidAt = updatedStats.status === 'paid' ? new Date().toISOString() : null;
+
+  storeModule.saveData(appState);
+  return { success: true };
+}
+
+/**
+ * Toggles a settlement's status between pending and paid (records or clears full payments).
  * @param {Object} appState 
  * @param {string} settlementId 
  * @returns {{ success: boolean, settlement?: Object }}
@@ -294,8 +368,25 @@ function toggleSettlementStatus(appState, settlementId) {
     return { success: false };
   }
 
-  settlement.status = settlement.status === 'paid' ? 'pending' : 'paid';
-  settlement.paidAt = settlement.status === 'paid' ? new Date().toISOString() : null;
+  const currentStats = calcModule.getSettlementPaymentStats(settlement);
+
+  if (currentStats.status === 'paid' || currentStats.status === 'partially_paid') {
+    // Clear payments and reset to pending
+    settlement.payments = [];
+    settlement.status = 'pending';
+    settlement.paidAt = null;
+  } else {
+    // Mark as fully paid by creating a single full payment
+    settlement.payments = [{
+      id: `pay_${Date.now()}_1`,
+      amount: settlement.amount,
+      paymentMethod: 'Other',
+      note: 'Full settlement payment',
+      date: new Date().toISOString().split('T')[0]
+    }];
+    settlement.status = 'paid';
+    settlement.paidAt = new Date().toISOString();
+  }
 
   storeModule.saveData(appState);
   return { success: true, settlement };
@@ -312,6 +403,8 @@ if (typeof module !== 'undefined' && module.exports) {
     editExpense,
     deleteExpense,
     recalculateGroupSettlements,
+    addPartialPayment,
+    deletePartialPayment,
     toggleSettlementStatus
   };
 }

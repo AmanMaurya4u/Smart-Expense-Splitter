@@ -187,7 +187,7 @@ function removeMember(appState, memberId) {
  * @returns {{ success: boolean, error?: string, expense?: Object }}
  */
 function addExpense(appState, expenseData) {
-  const { title, amount, category, paidBy, splitType, participants, customShares, date } = expenseData;
+  const { title, amount, category, paidBy, splitType, participants, customShares, date, receipt } = expenseData;
 
   // Validations
   if (!title || title.trim().length === 0 || title.length > 50) {
@@ -219,6 +219,7 @@ function addExpense(appState, expenseData) {
 
   const payerObj = appState.members.find(m => m.id === paidBy);
   const paidByName = payerObj ? payerObj.name : 'Someone';
+  const receiptObj = receipt && receipt.data ? { name: receipt.name || 'receipt.jpg', type: receipt.type || 'image/jpeg', data: receipt.data } : null;
 
   const newExpense = {
     id: `expense_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
@@ -230,6 +231,7 @@ function addExpense(appState, expenseData) {
     participants: [...participants],
     customShares: splitType === 'custom' ? { ...customShares } : {},
     date: date || new Date().toISOString().split('T')[0],
+    receipt: receiptObj,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -244,6 +246,16 @@ function addExpense(appState, expenseData) {
     amount: newExpense.amount,
     relatedEntityId: newExpense.id
   });
+
+  if (receiptObj) {
+    logActivity(appState, {
+      type: 'receipt_attached',
+      category: 'expenses',
+      message: `${paidByName} attached a receipt to "${newExpense.title}"`,
+      actor: paidByName,
+      relatedEntityId: newExpense.id
+    });
+  }
 
   recalculateGroupSettlements(appState);
   storeModule.saveData(appState);
@@ -264,7 +276,7 @@ function editExpense(appState, expenseId, updatedData) {
     return { success: false, error: 'Expense not found.' };
   }
 
-  const { title, amount, category, paidBy, splitType, participants, customShares, date } = updatedData;
+  const { title, amount, category, paidBy, splitType, participants, customShares, date, receipt } = updatedData;
 
   // Validations
   if (!title || title.trim().length === 0 || title.length > 50) {
@@ -296,6 +308,26 @@ function editExpense(appState, expenseId, updatedData) {
 
   const payerObj = appState.members.find(m => m.id === paidBy);
   const paidByName = payerObj ? payerObj.name : 'Someone';
+  const existingReceipt = appState.expenses[index].receipt || null;
+
+  let finalReceipt = existingReceipt;
+  let receiptActionLog = null;
+
+  if (typeof receipt !== 'undefined') {
+    if (receipt === null) {
+      if (existingReceipt) {
+        receiptActionLog = `${paidByName} removed the receipt from "${title.trim()}"`;
+      }
+      finalReceipt = null;
+    } else if (receipt && receipt.data) {
+      if (existingReceipt && existingReceipt.data) {
+        receiptActionLog = `${paidByName} replaced the receipt for "${title.trim()}"`;
+      } else {
+        receiptActionLog = `${paidByName} attached a receipt to "${title.trim()}"`;
+      }
+      finalReceipt = { name: receipt.name || 'receipt.jpg', type: receipt.type || 'image/jpeg', data: receipt.data };
+    }
+  }
 
   appState.expenses[index] = {
     ...appState.expenses[index],
@@ -307,6 +339,7 @@ function editExpense(appState, expenseId, updatedData) {
     participants: [...participants],
     customShares: splitType === 'custom' ? { ...customShares } : {},
     date: date || new Date().toISOString().split('T')[0],
+    receipt: finalReceipt,
     updatedAt: new Date().toISOString()
   };
 
@@ -318,6 +351,16 @@ function editExpense(appState, expenseId, updatedData) {
     amount: Math.round(numAmount * 100) / 100,
     relatedEntityId: expenseId
   });
+
+  if (receiptActionLog) {
+    logActivity(appState, {
+      type: 'receipt_updated',
+      category: 'expenses',
+      message: receiptActionLog,
+      actor: paidByName,
+      relatedEntityId: expenseId
+    });
+  }
 
   recalculateGroupSettlements(appState);
   storeModule.saveData(appState);

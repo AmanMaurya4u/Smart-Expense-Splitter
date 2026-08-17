@@ -77,7 +77,17 @@ function saveData(data) {
     localStorage.setItem(STORAGE_KEY, jsonString);
     return true;
   } catch (e) {
-    console.error('Failed to save data to localStorage:', e);
+    const isQuotaError = e && (
+      e.name === 'QuotaExceededError' ||
+      e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      e.code === 22 ||
+      e.code === 1014
+    );
+    if (isQuotaError) {
+      console.warn('LocalStorage Quota Exceeded while saving app data:', e);
+    } else {
+      console.error('Failed to save data to localStorage:', e);
+    }
     return false;
   }
 }
@@ -107,6 +117,13 @@ function migrateData(data) {
   if (data.group && typeof data.group.budget === 'undefined') {
     data.group.budget = null;
   }
+
+  // Ensure older expenses safely have receipt property defaulted to null
+  data.expenses.forEach(e => {
+    if (typeof e.receipt === 'undefined') {
+      e.receipt = null;
+    }
+  });
 
   // Backward compatibility migration for legacy settlements without payments history
   data.settlements.forEach(s => {

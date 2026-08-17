@@ -774,6 +774,105 @@ function generateSmartInsights(appState, referenceDateStr) {
   return insights;
 }
 
+/**
+ * Validates file format and file size for uploaded receipt images.
+ * 
+ * @param {File|Object} file - File object
+ * @param {number} [maxSizeBytes=5242880] - Max file size in bytes (default 5 MB)
+ * @returns {{ isValid: boolean, error?: string }}
+ */
+function validateReceiptFile(file, maxSizeBytes = 5 * 1024 * 1024) {
+  if (!file) {
+    return { isValid: false, error: 'No file selected.' };
+  }
+
+  const fileName = (file.name || '').toLowerCase();
+  const fileType = (file.type || '').toLowerCase();
+
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp'];
+
+  const typeMatches = allowedTypes.includes(fileType);
+  const extMatches = allowedExts.some(ext => fileName.endsWith(ext));
+
+  if (!typeMatches && !extMatches) {
+    return {
+      isValid: false,
+      error: 'Unsupported file format. Please upload JPG, PNG, or WEBP images.'
+    };
+  }
+
+  if (file.size && file.size > maxSizeBytes) {
+    const mbLimit = (maxSizeBytes / (1024 * 1024)).toFixed(0);
+    return {
+      isValid: false,
+      error: `File size exceeds ${mbLimit} MB limit. Please select a smaller file.`
+    };
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Compresses receipt image and resizes max dimension using HTML5 Canvas.
+ * 
+ * @param {File|Object} file 
+ * @param {number} [maxDimension=1600] 
+ * @param {number} [quality=0.75] 
+ * @returns {Promise<{ name: string, type: string, data: string }>}
+ */
+function compressReceiptImage(file, maxDimension = 1600, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      return reject(new Error('No file provided for compression.'));
+    }
+
+    if (typeof FileReader === 'undefined' || typeof Image === 'undefined') {
+      return resolve({
+        name: file.name || 'receipt.jpg',
+        type: file.type || 'image/jpeg',
+        data: typeof file.data === 'string' ? file.data : 'data:image/jpeg;base64,mock'
+      });
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read receipt image file.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Invalid or corrupted image file.'));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve({
+          name: file.name || 'receipt.jpg',
+          type: 'image/jpeg',
+          data: compressedDataUrl
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 // Universal module export support (Node.js & Browser)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -796,6 +895,8 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateMemberSpending,
     calculatePeriodSpending,
     calculateSpendingChange,
-    generateSmartInsights
+    generateSmartInsights,
+    validateReceiptFile,
+    compressReceiptImage
   };
 }

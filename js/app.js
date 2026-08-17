@@ -246,6 +246,15 @@ function bindEventListeners() {
     });
   }
 
+  // Open Add Recurring Expense Modal
+  const btnAddRecurring = document.getElementById('btn-open-add-recurring');
+  if (btnAddRecurring) {
+    btnAddRecurring.addEventListener('click', () => {
+      editingRecurringId = null;
+      openRecurringModal();
+    });
+  }
+
   // Tab Navigation
   const tabBtns = document.querySelectorAll('.tab-btn');
   tabBtns.forEach(btn => {
@@ -254,7 +263,7 @@ function bindEventListeners() {
       e.target.classList.add('active');
 
       const targetTab = e.target.getAttribute('data-tab');
-      const tabs = ['tab-expenses', 'tab-members', 'tab-settlements', 'tab-stats', 'tab-activity'];
+      const tabs = ['tab-expenses', 'tab-recurring', 'tab-members', 'tab-settlements', 'tab-stats', 'tab-activity'];
       tabs.forEach(t => {
         const el = document.getElementById(t);
         if (el) {
@@ -374,6 +383,30 @@ function bindEventListeners() {
       }
     } else if (e.target.classList.contains('btn-open-set-budget')) {
       openSetBudgetModal();
+    } else if (e.target.classList.contains('btn-convert-recurring')) {
+      const id = e.target.getAttribute('data-id');
+      const res = expense.convertRecurringToExpense(appState, id);
+      if (res.success) {
+        renderFullDashboard();
+        ui.showToast(`Added ${res.expense.title} — ₹${res.expense.amount.toFixed(2)}`, 'success');
+      } else {
+        ui.showToast(res.error, 'danger');
+      }
+    } else if (e.target.classList.contains('btn-toggle-pause-recurring')) {
+      const id = e.target.getAttribute('data-id');
+      const res = expense.togglePauseRecurringExpense(appState, id);
+      if (res.success) {
+        renderFullDashboard();
+        ui.showToast(`Recurring expense ${res.recurring.status === 'paused' ? 'paused' : 'resumed'}`, 'info');
+      }
+    } else if (e.target.classList.contains('btn-edit-recurring')) {
+      const id = e.target.getAttribute('data-id');
+      editingRecurringId = id;
+      openRecurringModal(id);
+    } else if (e.target.classList.contains('btn-delete-recurring')) {
+      const id = e.target.getAttribute('data-id');
+      deletingRecurringId = id;
+      ui.openModal('modal-confirm-delete-recurring');
     }
   });
 
@@ -420,6 +453,20 @@ function bindEventListeners() {
     });
   }
 
+  // Modal Confirm Delete Recurring Expense
+  const btnConfirmDeleteRecurring = document.getElementById('btn-confirm-delete-recurring');
+  if (btnConfirmDeleteRecurring) {
+    btnConfirmDeleteRecurring.addEventListener('click', () => {
+      if (deletingRecurringId) {
+        expense.deleteRecurringExpense(appState, deletingRecurringId);
+        deletingRecurringId = null;
+        ui.closeModal('modal-confirm-delete-recurring');
+        renderFullDashboard();
+        ui.showToast('Recurring expense deleted', 'info');
+      }
+    });
+  }
+
   // Modal Cancel/Close buttons
   document.querySelectorAll('.btn-close-modal').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -439,7 +486,16 @@ function bindEventListeners() {
     });
   }
 
-  // Split Type toggle buttons inside Modal
+  // Recurring Expense Form Submit
+  const formRecurring = document.getElementById('form-recurring-expense');
+  if (formRecurring) {
+    formRecurring.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleRecurringExpenseFormSubmit();
+    });
+  }
+
+  // Split Type toggle buttons inside Expense Modal
   const btnSplitEqual = document.getElementById('btn-split-equal');
   const btnSplitCustom = document.getElementById('btn-split-custom');
   if (btnSplitEqual && btnSplitCustom) {
@@ -454,6 +510,24 @@ function bindEventListeners() {
       btnSplitEqual.classList.remove('active');
       document.getElementById('custom-shares-container').classList.remove('hidden');
       renderCustomSharesInputs();
+    });
+  }
+
+  // Split Type toggle buttons inside Recurring Expense Modal
+  const btnRecSplitEqual = document.getElementById('btn-recurring-split-equal');
+  const btnRecSplitCustom = document.getElementById('btn-recurring-split-custom');
+  if (btnRecSplitEqual && btnRecSplitCustom) {
+    btnRecSplitEqual.addEventListener('click', () => {
+      btnRecSplitEqual.classList.add('active');
+      btnRecSplitCustom.classList.remove('active');
+      document.getElementById('recurring-custom-shares-container').classList.add('hidden');
+    });
+
+    btnRecSplitCustom.addEventListener('click', () => {
+      btnRecSplitCustom.classList.add('active');
+      btnRecSplitEqual.classList.remove('active');
+      document.getElementById('recurring-custom-shares-container').classList.remove('hidden');
+      renderRecurringCustomSharesInputs();
     });
   }
 

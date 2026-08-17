@@ -244,9 +244,15 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
   tableBody.innerHTML = expenses.map(exp => {
     const paidByName = memberMap[exp.paidBy] || 'Unknown';
     const participantCount = (exp.participants || []).length;
+    const hasReceipt = exp.receipt && exp.receipt.data;
     return `
       <tr>
-        <td><strong>${escapeHtml(exp.title)}</strong></td>
+        <td>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <strong>${escapeHtml(exp.title)}</strong>
+            ${hasReceipt ? `<button type="button" class="btn btn-secondary btn-sm btn-view-receipt" data-id="${exp.id}" title="View Receipt" style="padding: 2px 6px; font-size: 0.72rem; border-radius: var(--radius-sm);">📎 Receipt</button>` : ''}
+          </div>
+        </td>
         <td><span class="badge badge-category">${escapeHtml(exp.category || 'Other')}</span></td>
         <td><strong>₹${exp.amount.toFixed(2)}</strong></td>
         <td>${escapeHtml(paidByName)}</td>
@@ -254,6 +260,7 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
         <td>${exp.date || ''}</td>
         <td>
           <div style="display: flex; gap: 8px;">
+            ${hasReceipt ? `<button class="btn btn-secondary btn-sm btn-view-receipt" data-id="${exp.id}">View Receipt</button>` : ''}
             <button class="btn btn-secondary btn-sm btn-edit-expense" data-id="${exp.id}">Edit</button>
             <button class="btn btn-danger btn-sm btn-delete-expense" data-id="${exp.id}">Delete</button>
           </div>
@@ -265,11 +272,15 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
   // Mobile Stacked Cards
   cardsList.innerHTML = expenses.map(exp => {
     const paidByName = memberMap[exp.paidBy] || 'Unknown';
+    const hasReceipt = exp.receipt && exp.receipt.data;
     return `
       <div class="expense-card-mobile">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
-            <h4 style="font-weight: 600;">${escapeHtml(exp.title)}</h4>
+            <h4 style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
+              ${escapeHtml(exp.title)}
+              ${hasReceipt ? `<span class="badge badge-success" style="font-size: 0.68rem; padding: 2px 4px;">📎 Receipt</span>` : ''}
+            </h4>
             <span class="badge badge-category" style="margin-top: 4px;">${escapeHtml(exp.category || 'Other')}</span>
           </div>
           <span style="font-size: 1.1rem; font-weight: 700;">₹${exp.amount.toFixed(2)}</span>
@@ -278,7 +289,8 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
           <span>Paid by <strong>${escapeHtml(paidByName)}</strong></span>
           <span>${exp.date || ''}</span>
         </div>
-        <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+          ${hasReceipt ? `<button class="btn btn-secondary btn-sm btn-view-receipt" data-id="${exp.id}" style="flex:1;">View Receipt</button>` : ''}
           <button class="btn btn-secondary btn-sm btn-edit-expense" data-id="${exp.id}" style="flex:1;">Edit</button>
           <button class="btn btn-danger btn-sm btn-delete-expense" data-id="${exp.id}" style="flex:1;">Delete</button>
         </div>
@@ -924,6 +936,57 @@ function renderRecurringExpensesList(appState) {
   }).join('');
 }
 
+}
+
+/**
+ * Updates receipt upload & preview controls in Expense Form modal
+ * 
+ * @param {Object|null} receiptObj 
+ */
+function renderReceiptPreview(receiptObj) {
+  const emptyControls = document.getElementById('receipt-controls-empty');
+  const activeControls = document.getElementById('receipt-controls-active');
+  const thumbnail = document.getElementById('receipt-thumbnail-preview');
+  const fileNameEl = document.getElementById('receipt-file-name');
+
+  if (!emptyControls || !activeControls) return;
+
+  if (receiptObj && receiptObj.data) {
+    emptyControls.classList.add('hidden');
+    activeControls.classList.remove('hidden');
+    if (thumbnail) thumbnail.src = receiptObj.data;
+    if (fileNameEl) fileNameEl.textContent = receiptObj.name || 'receipt.jpg';
+  } else {
+    emptyControls.classList.remove('hidden');
+    activeControls.classList.add('hidden');
+    if (thumbnail) thumbnail.src = '';
+    if (fileNameEl) fileNameEl.textContent = 'receipt.jpg';
+  }
+}
+
+/**
+ * Opens Lightbox Modal displaying attached expense receipt image
+ * 
+ * @param {Object} receiptObj 
+ * @param {string} [expenseTitle] 
+ */
+function openReceiptLightboxModal(receiptObj, expenseTitle) {
+  if (!receiptObj || !receiptObj.data) return;
+
+  const modal = document.getElementById('modal-view-receipt');
+  const titleEl = document.getElementById('modal-receipt-title');
+  const imageEl = document.getElementById('lightbox-receipt-image');
+  const captionEl = document.getElementById('lightbox-receipt-caption');
+
+  if (!modal || !imageEl) return;
+
+  if (titleEl) titleEl.textContent = `Receipt — ${expenseTitle || 'Expense'}`;
+  imageEl.src = receiptObj.data;
+  if (captionEl) captionEl.textContent = `File: ${receiptObj.name || 'receipt.jpg'}`;
+
+  openModal('modal-view-receipt');
+}
+
 // Utility HTML escape helper to prevent XSS
 function escapeHtml(str) {
   return String(str || '')
@@ -953,6 +1016,8 @@ if (typeof module !== 'undefined' && module.exports) {
     renderActivityTimeline,
     renderRecurringDueWidget,
     renderRecurringExpensesList,
+    renderReceiptPreview,
+    openReceiptLightboxModal,
     escapeHtml
   };
 }

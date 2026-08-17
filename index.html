@@ -500,6 +500,36 @@
             </div>
             <span id="custom-shares-status" class="stat-subtext" style="display: block; font-weight: 600; margin-top: 4px;"></span>
           </div>
+
+          <!-- Receipt / Bill Image Attachment Field -->
+          <div class="form-group">
+            <label class="form-label">Receipt / Bill Image (Optional)</label>
+            <div id="receipt-upload-container" style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+              <input type="file" id="input-expense-receipt" accept="image/jpeg,image/png,image/webp" style="display: none;">
+              
+              <!-- No receipt selected state -->
+              <div id="receipt-controls-empty" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <span style="font-size: 0.85rem; color: var(--color-text-muted);">Attach JPG, PNG, or WEBP receipt (Max 5MB)</span>
+                <button type="button" id="btn-trigger-upload-receipt" class="btn btn-secondary btn-sm">📎 Choose Image</button>
+              </div>
+
+              <!-- Active receipt preview state -->
+              <div id="receipt-controls-active" class="hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <img id="receipt-thumbnail-preview" src="" alt="Receipt Preview" style="width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--color-surface-border);">
+                  <div>
+                    <div id="receipt-file-name" style="font-size: 0.85rem; font-weight: 600; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">receipt.jpg</div>
+                    <span class="badge badge-success" style="font-size: 0.7rem; margin-top: 2px;">Attached</span>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                  <button type="button" id="btn-view-preview-receipt" class="btn btn-secondary btn-sm">View</button>
+                  <button type="button" id="btn-replace-receipt" class="btn btn-secondary btn-sm">Replace</button>
+                  <button type="button" id="btn-remove-receipt-form" class="btn btn-danger btn-sm">Remove</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -761,6 +791,42 @@
       <div class="modal-footer">
         <button class="btn btn-secondary btn-close-modal">Cancel</button>
         <button id="btn-confirm-delete-recurring" class="btn btn-danger">Delete Template</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lightbox Modal for Viewing Receipt Image -->
+  <div id="modal-view-receipt" class="modal-overlay" aria-hidden="true">
+    <div class="modal-dialog" style="max-width: 720px; text-align: center;">
+      <div class="modal-header">
+        <h3 id="modal-receipt-title" class="modal-title">Receipt View</h3>
+        <button class="btn-icon btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-x: auto; max-height: 75vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
+        <img id="lightbox-receipt-image" src="" alt="Receipt Image" style="max-width: 100%; max-height: 60vh; border-radius: var(--radius-md); box-shadow: var(--shadow-md); object-fit: contain; cursor: pointer;">
+        <span id="lightbox-receipt-caption" style="font-size: 0.85rem; color: var(--color-text-muted);"></span>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" id="btn-zoom-receipt" class="btn btn-secondary btn-sm">Toggle Full Size</button>
+        <button type="button" class="btn btn-secondary btn-close-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Remove Receipt Modal -->
+  <div id="modal-confirm-remove-receipt" class="modal-overlay" aria-hidden="true">
+    <div class="modal-dialog" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Remove Receipt</h3>
+        <button class="btn-icon btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to remove this receipt from the expense?</p>
+        <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 6px;">Note: The expense record itself will not be deleted.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-close-modal">Cancel</button>
+        <button id="btn-confirm-remove-receipt" class="btn btn-danger">Remove Receipt</button>
       </div>
     </div>
   </div>

@@ -467,77 +467,175 @@ function renderSettlementsList(appState) {
 }
 
 /**
- * Renders Spend Statistics section
+ * Renders Spend Insights & Analytics section
  */
 function renderStatistics(appState) {
-  const catListContainer = document.getElementById('stats-categories-list');
-  const topSpenderEl = document.getElementById('stat-top-spender');
-  const avgSpendEl = document.getElementById('stat-avg-spend');
-  if (!catListContainer) return;
+  const emptyState = document.getElementById('insights-empty-state');
+  const contentContainer = document.getElementById('insights-content');
+  if (!emptyState || !contentContainer) return;
 
   const expenses = appState.expenses || [];
   const members = appState.members || [];
 
   if (expenses.length === 0) {
-    catListContainer.innerHTML = '<div style="color: var(--color-text-muted);">No expense data to analyze yet.</div>';
-    if (topSpenderEl) topSpenderEl.textContent = '-';
-    if (avgSpendEl) avgSpendEl.textContent = '₹0.00';
+    emptyState.classList.remove('hidden');
+    contentContainer.classList.add('hidden');
     return;
   }
 
-  const categoryTotals = {};
-  let totalSpend = 0;
+  emptyState.classList.add('hidden');
+  contentContainer.classList.remove('hidden');
 
-  expenses.forEach(e => {
-    const cat = e.category || 'Other';
-    const amt = parseFloat(e.amount) || 0;
-    categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
-    totalSpend += amt;
-  });
+  // 1. Total Spending & Count & Average & Highest/Lowest
+  const totalSpending = calc.calculateTotalSpending ? calc.calculateTotalSpending(expenses) : 0;
+  const avgExpense = calc.calculateAverageExpense ? calc.calculateAverageExpense(expenses) : 0;
+  const highestExp = calc.findHighestExpense ? calc.findHighestExpense(expenses) : null;
+  const lowestExp = calc.findLowestExpense ? calc.findLowestExpense(expenses) : null;
 
-  const catColors = {
-    'Food': 'var(--cat-food)',
-    'Travel': 'var(--cat-travel)',
-    'Hotel': 'var(--cat-hotel)',
-    'Shopping': 'var(--cat-shopping)',
-    'Entertainment': 'var(--cat-entertainment)',
-    'Other': 'var(--cat-other)'
-  };
+  const totalSpendEl = document.getElementById('analytics-total-spending');
+  const totalCountEl = document.getElementById('analytics-total-count');
+  const avgExpenseEl = document.getElementById('analytics-average-expense');
+  const highestAmtEl = document.getElementById('analytics-highest-amount');
+  const highestTitleEl = document.getElementById('analytics-highest-title');
+  const lowestAmtEl = document.getElementById('analytics-lowest-amount');
+  const lowestTitleEl = document.getElementById('analytics-lowest-title');
 
-  catListContainer.innerHTML = Object.keys(categoryTotals).map(cat => {
-    const amt = categoryTotals[cat];
-    const pct = totalSpend > 0 ? Math.round((amt / totalSpend) * 100) : 0;
-    const color = catColors[cat] || 'var(--cat-other)';
-    return `
-      <div class="cat-bar-item">
-        <div class="cat-bar-label">
-          <span>${cat} (${pct}%)</span>
-          <strong>₹${amt.toFixed(2)}</strong>
+  if (totalSpendEl) totalSpendEl.textContent = `₹${totalSpending.toFixed(2)}`;
+  if (totalCountEl) totalCountEl.textContent = `${expenses.length} expense${expenses.length === 1 ? '' : 's'} recorded`;
+  if (avgExpenseEl) avgExpenseEl.textContent = `₹${avgExpense.toFixed(2)}`;
+
+  if (highestExp) {
+    if (highestAmtEl) highestAmtEl.textContent = `₹${parseFloat(highestExp.amount).toFixed(2)}`;
+    if (highestTitleEl) highestTitleEl.textContent = escapeHtml(highestExp.title);
+  } else {
+    if (highestAmtEl) highestAmtEl.textContent = '₹0.00';
+    if (highestTitleEl) highestTitleEl.textContent = '-';
+  }
+
+  if (lowestExp) {
+    if (lowestAmtEl) lowestAmtEl.textContent = `₹${parseFloat(lowestExp.amount).toFixed(2)}`;
+    if (lowestTitleEl) lowestTitleEl.textContent = escapeHtml(lowestExp.title);
+  } else {
+    if (lowestAmtEl) lowestAmtEl.textContent = '₹0.00';
+    if (lowestTitleEl) lowestTitleEl.textContent = '-';
+  }
+
+  // 2. Smart Insights List
+  const insightsListContainer = document.getElementById('analytics-smart-insights-list');
+  if (insightsListContainer) {
+    const insights = calc.generateSmartInsights ? calc.generateSmartInsights(appState) : [];
+    if (insights.length === 0) {
+      insightsListContainer.innerHTML = '<div style="font-size: 0.85rem; color: var(--color-text-muted);">Add more expense data to generate personalized insights.</div>';
+    } else {
+      insightsListContainer.innerHTML = insights.map(insight => `
+        <div style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.9rem; color: var(--color-text-main);">
+          <span style="color: var(--color-primary); font-weight: bold;">•</span>
+          <span>${escapeHtml(insight)}</span>
         </div>
-        <div class="cat-bar-track">
-          <div class="cat-bar-fill" style="width: ${pct}%; background-color: ${color};"></div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  // Top Spender Calculation
-  const balancesMap = calc.calculateBalances ? calc.calculateBalances(members, expenses) : {};
-  let topSpenderName = '-';
-  let maxPaid = 0;
-
-  Object.values(balancesMap).forEach(b => {
-    if (b.paid > maxPaid) {
-      maxPaid = b.paid;
-      topSpenderName = b.name;
+      `).join('');
     }
-  });
+  }
 
-  if (topSpenderEl) topSpenderEl.textContent = `${topSpenderName} (₹${maxPaid.toFixed(2)})`;
+  // 3. Time-Based Spending & MoM Comparison
+  const periodData = calc.calculatePeriodSpending ? calc.calculatePeriodSpending(expenses) : { today: 0, thisWeek: 0, thisMonth: 0, previousMonth: 0 };
+  const momData = calc.calculateSpendingChange ? calc.calculateSpendingChange(expenses) : { hasHistoricalData: false, formattedMessage: '' };
 
-  // Average Spend Calculation
-  const avg = members.length > 0 ? totalSpend / members.length : 0;
-  if (avgSpendEl) avgSpendEl.textContent = `₹${avg.toFixed(2)}`;
+  const todayEl = document.getElementById('analytics-period-today');
+  const weekEl = document.getElementById('analytics-period-week');
+  const monthEl = document.getElementById('analytics-period-month');
+  const prevMonthEl = document.getElementById('analytics-period-prev-month');
+  const momBadge = document.getElementById('analytics-mom-comparison-badge');
+
+  if (todayEl) todayEl.textContent = `₹${periodData.today.toFixed(2)}`;
+  if (weekEl) weekEl.textContent = `₹${periodData.thisWeek.toFixed(2)}`;
+  if (monthEl) monthEl.textContent = `₹${periodData.thisMonth.toFixed(2)}`;
+  if (prevMonthEl) prevMonthEl.textContent = `₹${periodData.previousMonth.toFixed(2)}`;
+
+  if (momBadge) {
+    if (momData.hasHistoricalData) {
+      const isUp = momData.direction === 'increase';
+      const isDown = momData.direction === 'decrease';
+      const color = isUp ? 'var(--color-danger-text)' : (isDown ? 'var(--color-success-text)' : 'var(--color-text-main)');
+      const icon = isUp ? '📈' : (isDown ? '📉' : '➡️');
+      momBadge.style.color = color;
+      momBadge.innerHTML = `${icon} ${escapeHtml(momData.formattedMessage)}`;
+    } else {
+      momBadge.style.color = 'var(--color-text-muted)';
+      momBadge.textContent = 'ℹ️ No spending recorded in previous month for comparison.';
+    }
+  }
+
+  // 4. Member Actual Spending Breakdown
+  const memberListContainer = document.getElementById('analytics-member-spending-list');
+  if (memberListContainer) {
+    const memberData = calc.calculateMemberSpending ? calc.calculateMemberSpending(members, expenses) : { memberPayments: [], highestPayer: null, lowestPayer: null };
+    const maxPaid = memberData.highestPayer ? memberData.highestPayer.totalPaid : 1;
+
+    memberListContainer.innerHTML = memberData.memberPayments.map(m => {
+      const pct = maxPaid > 0 ? Math.round((m.totalPaid / maxPaid) * 100) : 0;
+      const isHighest = memberData.highestPayer && m.memberId === memberData.highestPayer.memberId && m.totalPaid > 0;
+      const isLowest = memberData.lowestPayer && m.memberId === memberData.lowestPayer.memberId && m.totalPaid > 0 && memberData.memberPayments.length > 1;
+
+      return `
+        <div class="cat-bar-item">
+          <div class="cat-bar-label">
+            <span style="font-weight: 500;">
+              ${escapeHtml(m.name)}
+              ${isHighest ? '<span class="badge badge-success" style="margin-left: 6px; font-size: 0.7rem;">Top Payer</span>' : ''}
+              ${isLowest ? '<span class="badge badge-secondary" style="margin-left: 6px; font-size: 0.7rem;">Lowest</span>' : ''}
+            </span>
+            <strong>₹${m.totalPaid.toFixed(2)}</strong>
+          </div>
+          <div class="cat-bar-track">
+            <div class="cat-bar-fill" style="width: ${pct}%; background-color: var(--color-primary);"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 5. Category Breakdown Section
+  const catListContainer = document.getElementById('stats-categories-list');
+  const catHighlightsContainer = document.getElementById('analytics-category-highlights');
+
+  if (catListContainer) {
+    const catData = calc.calculateCategorySpending ? calc.calculateCategorySpending(expenses) : { categories: [], highestCategory: null, lowestCategory: null };
+
+    if (catHighlightsContainer) {
+      if (catData.highestCategory && catData.lowestCategory && catData.categories.length > 1) {
+        catHighlightsContainer.innerHTML = `
+          <span class="badge badge-success">Top: ${escapeHtml(catData.highestCategory.category)} (₹${catData.highestCategory.totalAmount.toFixed(2)})</span>
+          <span class="badge badge-secondary">Lowest: ${escapeHtml(catData.lowestCategory.category)} (₹${catData.lowestCategory.totalAmount.toFixed(2)})</span>
+        `;
+      } else {
+        catHighlightsContainer.innerHTML = '';
+      }
+    }
+
+    const catColors = {
+      'Food': 'var(--cat-food)',
+      'Travel': 'var(--cat-travel)',
+      'Hotel': 'var(--cat-hotel)',
+      'Shopping': 'var(--cat-shopping)',
+      'Entertainment': 'var(--cat-entertainment)',
+      'Other': 'var(--cat-other)'
+    };
+
+    catListContainer.innerHTML = catData.categories.map(c => {
+      const color = catColors[c.category] || 'var(--cat-other)';
+      return `
+        <div class="cat-bar-item">
+          <div class="cat-bar-label">
+            <span>${escapeHtml(c.category)} (${c.percentage}%)</span>
+            <strong>₹${c.totalAmount.toFixed(2)}</strong>
+          </div>
+          <div class="cat-bar-track">
+            <div class="cat-bar-fill" style="width: ${c.percentage}%; background-color: ${color};"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
 }
 
 /**

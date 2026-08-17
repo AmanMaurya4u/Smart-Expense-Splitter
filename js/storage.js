@@ -17,7 +17,8 @@ function getInitialData() {
     members: [], // [{ id, name, contact, createdAt }]
     expenses: [], // [{ id, title, amount, category, paidBy, splitType, participants, customShares, date, createdAt }]
     settlements: [], // [{ id, from, to, amount, status, payments, paidAt }]
-    activities: [] // [{ id, type, category, message, actor, amount, relatedEntityId, timestamp }]
+    activities: [], // [{ id, type, category, message, actor, amount, relatedEntityId, timestamp }]
+    recurringExpenses: [] // [{ id, title, amount, paidBy, participants, splitType, customShares, category, frequency, startDate, nextDueDate, status, lastGeneratedDate, createdAt }]
   };
 }
 
@@ -101,6 +102,7 @@ function migrateData(data) {
   if (!Array.isArray(data.expenses)) data.expenses = [];
   if (!Array.isArray(data.settlements)) data.settlements = [];
   if (!Array.isArray(data.activities)) data.activities = [];
+  if (!Array.isArray(data.recurringExpenses)) data.recurringExpenses = [];
   if (!data.theme) data.theme = 'light';
   if (data.group && typeof data.group.budget === 'undefined') {
     data.group.budget = null;

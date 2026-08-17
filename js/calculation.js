@@ -320,6 +320,107 @@ function validateBudgetAmount(amount) {
   };
 }
 
+/**
+ * Advances a date string (YYYY-MM-DD) by one period according to frequency.
+ * 
+ * @param {string} dateStr - Date string YYYY-MM-DD
+ * @param {string} frequency - 'weekly' | 'monthly' | 'yearly'
+ * @returns {string} Next due date string YYYY-MM-DD
+ */
+function calculateNextDueDate(dateStr, frequency) {
+  if (!dateStr || typeof dateStr !== 'string') {
+    dateStr = new Date().toISOString().split('T')[0];
+  }
+
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    return dateStr;
+  }
+
+  const [y, m, d] = parts;
+
+  if (frequency === 'weekly') {
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + 7);
+    const resY = date.getFullYear();
+    const resM = String(date.getMonth() + 1).padStart(2, '0');
+    const resD = String(date.getDate()).padStart(2, '0');
+    return `${resY}-${resM}-${resD}`;
+  }
+
+  if (frequency === 'yearly') {
+    let targetYear = y + 1;
+    let targetMonth = m;
+    const maxDays = new Date(targetYear, targetMonth, 0).getDate();
+    const targetDay = Math.min(d, maxDays);
+    return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+  }
+
+  // Default 'monthly'
+  let targetYear = y;
+  let targetMonth = m + 1;
+  if (targetMonth > 12) {
+    targetYear += 1;
+    targetMonth = 1;
+  }
+  const maxDays = new Date(targetYear, targetMonth, 0).getDate();
+  const targetDay = Math.min(d, maxDays);
+  return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+}
+
+/**
+ * Calculates due status info for a recurring expense relative to reference date.
+ * 
+ * @param {string} nextDueDateStr - Date string YYYY-MM-DD
+ * @param {string} status - 'active' | 'paused'
+ * @param {string} [refDateStr] - Optional reference date string YYYY-MM-DD (defaults to today)
+ * @returns {{ code: 'PAUSED'|'OVERDUE'|'DUE_TODAY'|'UPCOMING', label: string, diffDays: number, isDue: boolean }}
+ */
+function getRecurringDueStatus(nextDueDateStr, status, refDateStr) {
+  if (status === 'paused') {
+    return {
+      code: 'PAUSED',
+      label: 'Paused',
+      diffDays: 0,
+      isDue: false
+    };
+  }
+
+  const todayStr = refDateStr || new Date().toISOString().split('T')[0];
+  const [refY, refM, refD] = todayStr.split('-').map(Number);
+  const [dueY, dueM, dueD] = (nextDueDateStr || todayStr).split('-').map(Number);
+
+  const refTime = Date.UTC(refY, refM - 1, refD);
+  const dueTime = Date.UTC(dueY, dueM - 1, dueD);
+  const diffDays = Math.round((dueTime - refTime) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const absDays = Math.abs(diffDays);
+    return {
+      code: 'OVERDUE',
+      label: absDays === 1 ? 'Overdue by 1 day' : `Overdue by ${absDays} days`,
+      diffDays,
+      isDue: true
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      code: 'DUE_TODAY',
+      label: 'Due Today',
+      diffDays,
+      isDue: true
+    };
+  }
+
+  return {
+    code: 'UPCOMING',
+    label: diffDays === 1 ? 'Due in 1 day' : `Due in ${diffDays} days`,
+    diffDays,
+    isDue: false
+  };
+}
+
 // Universal module export support (Node.js & Browser)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -331,6 +432,8 @@ if (typeof module !== 'undefined' && module.exports) {
     getSettlementPaymentStats,
     validatePartialPayment,
     getBudgetStats,
-    validateBudgetAmount
+    validateBudgetAmount,
+    calculateNextDueDate,
+    getRecurringDueStatus
   };
 }

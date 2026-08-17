@@ -421,6 +421,359 @@ function getRecurringDueStatus(nextDueDateStr, status, refDateStr) {
   };
 }
 
+/**
+ * Calculates total spending sum across all actual expenses.
+ * 
+ * @param {Array<Object>} expenses 
+ * @returns {number}
+ */
+function calculateTotalSpending(expenses) {
+  if (!Array.isArray(expenses) || expenses.length === 0) return 0;
+  const totalCents = expenses.reduce((acc, exp) => {
+    return acc + Math.round((parseFloat(exp.amount) || 0) * 100);
+  }, 0);
+  return totalCents / 100;
+}
+
+/**
+ * Calculates average expense amount.
+ * 
+ * @param {Array<Object>} expenses 
+ * @returns {number}
+ */
+function calculateAverageExpense(expenses) {
+  if (!Array.isArray(expenses) || expenses.length === 0) return 0;
+  const total = calculateTotalSpending(expenses);
+  return Math.round((total / expenses.length) * 100) / 100;
+}
+
+/**
+ * Finds the highest recorded expense item.
+ * 
+ * @param {Array<Object>} expenses 
+ * @returns {Object|null}
+ */
+function findHighestExpense(expenses) {
+  if (!Array.isArray(expenses) || expenses.length === 0) return null;
+  let highest = expenses[0];
+  let maxAmt = parseFloat(highest.amount) || 0;
+  for (let i = 1; i < expenses.length; i++) {
+    const amt = parseFloat(expenses[i].amount) || 0;
+    if (amt > maxAmt) {
+      maxAmt = amt;
+      highest = expenses[i];
+    }
+  }
+  return highest;
+}
+
+/**
+ * Finds the lowest recorded expense item.
+ * 
+ * @param {Array<Object>} expenses 
+ * @returns {Object|null}
+ */
+function findLowestExpense(expenses) {
+  if (!Array.isArray(expenses) || expenses.length === 0) return null;
+  let lowest = expenses[0];
+  let minAmt = parseFloat(lowest.amount) || 0;
+  for (let i = 1; i < expenses.length; i++) {
+    const amt = parseFloat(expenses[i].amount) || 0;
+    if (amt < minAmt) {
+      minAmt = amt;
+      lowest = expenses[i];
+    }
+  }
+  return lowest;
+}
+
+/**
+ * Calculates breakdown of spending by category.
+ * 
+ * @param {Array<Object>} expenses 
+ * @returns {{ categories: Array<{category: string, totalAmount: number, count: number, percentage: number}>, highestCategory: Object|null, lowestCategory: Object|null }}
+ */
+function calculateCategorySpending(expenses) {
+  if (!Array.isArray(expenses) || expenses.length === 0) {
+    return { categories: [], highestCategory: null, lowestCategory: null };
+  }
+
+  const categoryTotals = {};
+  const categoryCounts = {};
+  let totalSpendCents = 0;
+
+  expenses.forEach(e => {
+    const cat = e.category || 'Other';
+    const cents = Math.round((parseFloat(e.amount) || 0) * 100);
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + cents;
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    totalSpendCents += cents;
+  });
+
+  const categories = Object.keys(categoryTotals).map(cat => {
+    const totalAmount = categoryTotals[cat] / 100;
+    const count = categoryCounts[cat];
+    const percentage = totalSpendCents > 0 ? Math.round((categoryTotals[cat] / totalSpendCents) * 1000) / 10 : 0;
+    return {
+      category: cat,
+      totalAmount,
+      count,
+      percentage
+    };
+  });
+
+  categories.sort((a, b) => b.totalAmount - a.totalAmount);
+
+  const highestCategory = categories.length > 0 ? categories[0] : null;
+  const lowestCategory = categories.length > 0 ? categories[categories.length - 1] : null;
+
+  return {
+    categories,
+    highestCategory,
+    lowestCategory
+  };
+}
+
+/**
+ * Calculates total paid contributions per member.
+ * 
+ * @param {Array<Object>} members 
+ * @param {Array<Object>} expenses 
+ * @returns {{ memberPayments: Array<{memberId: string, name: string, totalPaid: number, count: number}>, highestPayer: Object|null, lowestPayer: Object|null }}
+ */
+function calculateMemberSpending(members, expenses) {
+  if (!Array.isArray(members) || members.length === 0) {
+    return { memberPayments: [], highestPayer: null, lowestPayer: null };
+  }
+
+  const memberMap = {};
+  members.forEach(m => {
+    memberMap[m.id] = {
+      memberId: m.id,
+      name: m.name,
+      totalPaid: 0,
+      count: 0
+    };
+  });
+
+  (expenses || []).forEach(e => {
+    const paidById = e.paidBy;
+    const cents = Math.round((parseFloat(e.amount) || 0) * 100);
+    if (memberMap[paidById]) {
+      memberMap[paidById].totalPaid += cents / 100;
+      memberMap[paidById].count += 1;
+    }
+  });
+
+  const memberPayments = Object.values(memberMap);
+  memberPayments.sort((a, b) => b.totalPaid - a.totalPaid);
+
+  let highestPayer = null;
+  let lowestPayer = null;
+
+  const paidMembers = memberPayments.filter(m => m.totalPaid > 0);
+  if (paidMembers.length > 0) {
+    highestPayer = paidMembers[0];
+    lowestPayer = paidMembers[paidMembers.length - 1];
+  } else if (memberPayments.length > 0) {
+    highestPayer = memberPayments[0];
+    lowestPayer = memberPayments[memberPayments.length - 1];
+  }
+
+  return {
+    memberPayments,
+    highestPayer,
+    lowestPayer
+  };
+}
+
+/**
+ * Calculates time-based spending totals (today, this week, this month, previous month).
+ * 
+ * @param {Array<Object>} expenses 
+ * @param {string} [referenceDateStr] - Reference ISO date YYYY-MM-DD
+ * @returns {{ today: number, thisWeek: number, thisMonth: number, previousMonth: number }}
+ */
+function calculatePeriodSpending(expenses, referenceDateStr) {
+  if (!Array.isArray(expenses) || expenses.length === 0) {
+    return { today: 0, thisWeek: 0, thisMonth: 0, previousMonth: 0 };
+  }
+
+  const refStr = referenceDateStr || new Date().toISOString().split('T')[0];
+  const parts = refStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    return { today: 0, thisWeek: 0, thisMonth: 0, previousMonth: 0 };
+  }
+
+  const [refY, refM, refD] = parts;
+  const todayStr = refStr;
+  const currentMonthPrefix = `${refY}-${String(refM).padStart(2, '0')}`;
+
+  let prevY = refY;
+  let prevM = refM - 1;
+  if (prevM < 1) {
+    prevY -= 1;
+    prevM = 12;
+  }
+  const prevMonthPrefix = `${prevY}-${String(prevM).padStart(2, '0')}`;
+
+  // Week bounds (Monday to Sunday)
+  const refDate = new Date(refY, refM - 1, refD);
+  const dayOfWeek = refDate.getDay();
+  const distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const startOfWeekDate = new Date(refY, refM - 1, refD - distanceToMonday);
+  const endOfWeekDate = new Date(startOfWeekDate);
+  endOfWeekDate.setDate(endOfWeekDate.getDate() + 6);
+
+  const startOfWeekStr = `${startOfWeekDate.getFullYear()}-${String(startOfWeekDate.getMonth() + 1).padStart(2, '0')}-${String(startOfWeekDate.getDate()).padStart(2, '0')}`;
+  const endOfWeekStr = `${endOfWeekDate.getFullYear()}-${String(endOfWeekDate.getMonth() + 1).padStart(2, '0')}-${String(endOfWeekDate.getDate()).padStart(2, '0')}`;
+
+  let todayCents = 0;
+  let thisWeekCents = 0;
+  let thisMonthCents = 0;
+  let previousMonthCents = 0;
+
+  expenses.forEach(e => {
+    const expDateStr = e.date || '';
+    const cents = Math.round((parseFloat(e.amount) || 0) * 100);
+
+    if (expDateStr === todayStr) {
+      todayCents += cents;
+    }
+
+    if (expDateStr >= startOfWeekStr && expDateStr <= endOfWeekStr) {
+      thisWeekCents += cents;
+    }
+
+    if (expDateStr.startsWith(currentMonthPrefix)) {
+      thisMonthCents += cents;
+    }
+
+    if (expDateStr.startsWith(prevMonthPrefix)) {
+      previousMonthCents += cents;
+    }
+  });
+
+  return {
+    today: todayCents / 100,
+    thisWeek: thisWeekCents / 100,
+    thisMonth: thisMonthCents / 100,
+    previousMonth: previousMonthCents / 100
+  };
+}
+
+/**
+ * Calculates Month-over-Month spending comparison percentage and message.
+ * 
+ * @param {Array<Object>} expenses 
+ * @param {string} [referenceDateStr] 
+ * @returns {{ currentMonthSpent: number, previousMonthSpent: number, percentageChange: number, direction: 'increase'|'decrease'|'equal'|'no_history', hasHistoricalData: boolean, formattedMessage: string }}
+ */
+function calculateSpendingChange(expenses, referenceDateStr) {
+  const period = calculatePeriodSpending(expenses, referenceDateStr);
+  const current = period.thisMonth;
+  const previous = period.previousMonth;
+
+  if (previous <= 0) {
+    return {
+      currentMonthSpent: current,
+      previousMonthSpent: previous,
+      percentageChange: 0,
+      direction: 'no_history',
+      hasHistoricalData: false,
+      formattedMessage: 'No spending recorded in previous month for comparison.'
+    };
+  }
+
+  const diff = current - previous;
+  const percentageChange = Math.round(((diff) / previous) * 1000) / 10;
+
+  let direction = 'equal';
+  let formattedMessage = `Spending remained equal compared with last month.`;
+
+  if (percentageChange > 0) {
+    direction = 'increase';
+    formattedMessage = `Spending increased by ${percentageChange}% compared with last month.`;
+  } else if (percentageChange < 0) {
+    direction = 'decrease';
+    formattedMessage = `Spending decreased by ${Math.abs(percentageChange)}% compared with last month.`;
+  }
+
+  return {
+    currentMonthSpent: current,
+    previousMonthSpent: previous,
+    percentageChange,
+    direction,
+    hasHistoricalData: true,
+    formattedMessage
+  };
+}
+
+/**
+ * Generates rule-based smart insights array from current state.
+ * 
+ * @param {Object} appState 
+ * @param {string} [referenceDateStr] 
+ * @returns {Array<string>}
+ */
+function generateSmartInsights(appState, referenceDateStr) {
+  const expenses = appState.expenses || [];
+  if (expenses.length === 0) {
+    return [];
+  }
+
+  const insights = [];
+
+  const total = calculateTotalSpending(expenses);
+  const avg = calculateAverageExpense(expenses);
+  const count = expenses.length;
+  const highestExp = findHighestExpense(expenses);
+  const categoryData = calculateCategorySpending(expenses);
+  const memberData = calculateMemberSpending(appState.members || [], expenses);
+  const momData = calculateSpendingChange(expenses, referenceDateStr);
+
+  // 1. Highest category insight
+  if (categoryData.highestCategory) {
+    insights.push(`${categoryData.highestCategory.category} is your highest spending category (${categoryData.highestCategory.percentage}% of total spend).`);
+  }
+
+  // 2. Highest payer insight
+  if (memberData.highestPayer && memberData.highestPayer.totalPaid > 0) {
+    insights.push(`${memberData.highestPayer.name} paid the most overall (₹${memberData.highestPayer.totalPaid.toFixed(2)}).`);
+  }
+
+  // 3. Month-over-Month comparison insight
+  if (momData.hasHistoricalData) {
+    if (momData.direction === 'increase') {
+      insights.push(`Your group spent ${momData.percentageChange}% more this month than last month.`);
+    } else if (momData.direction === 'decrease') {
+      insights.push(`Your group spent ${Math.abs(momData.percentageChange)}% less this month than last month.`);
+    } else {
+      insights.push(`Your group spending this month is equal to last month.`);
+    }
+  }
+
+  // 4. Largest expense insight
+  if (highestExp) {
+    insights.push(`Your largest expense is "${highestExp.title}" at ₹${parseFloat(highestExp.amount).toFixed(2)}.`);
+  }
+
+  // 5. Total count & average insight
+  insights.push(`You have recorded ${count} expense${count > 1 ? 's' : ''} with an average expense of ₹${avg.toFixed(2)}.`);
+
+  // 6. Group Budget insight if configured
+  if (appState.group && typeof appState.group.budget === 'number' && appState.group.budget > 0) {
+    const budgetStats = getBudgetStats(appState.group, expenses);
+    if (budgetStats.isExceeded) {
+      insights.push(`Your group has exceeded the budget by ₹${budgetStats.exceededAmount.toFixed(2)}.`);
+    } else {
+      insights.push(`You have used ${budgetStats.percentage}% of your group budget (₹${budgetStats.totalSpent.toFixed(2)} of ₹${budgetStats.totalBudget.toFixed(2)}).`);
+    }
+  }
+
+  return insights;
+}
+
 // Universal module export support (Node.js & Browser)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -434,6 +787,15 @@ if (typeof module !== 'undefined' && module.exports) {
     getBudgetStats,
     validateBudgetAmount,
     calculateNextDueDate,
-    getRecurringDueStatus
+    getRecurringDueStatus,
+    calculateTotalSpending,
+    calculateAverageExpense,
+    findHighestExpense,
+    findLowestExpense,
+    calculateCategorySpending,
+    calculateMemberSpending,
+    calculatePeriodSpending,
+    calculateSpendingChange,
+    generateSmartInsights
   };
 }

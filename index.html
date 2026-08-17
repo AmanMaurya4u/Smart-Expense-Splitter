@@ -263,29 +263,110 @@
         </div>
       </div>
 
-      <!-- Tab Content 4: Spend Insights -->
+      <!-- Tab Content 4: Spend Insights & Spending Analytics -->
       <div id="tab-stats" class="hidden">
-        <div class="stats-container">
+        <!-- Empty State container when 0 expenses exist -->
+        <div id="insights-empty-state" class="empty-state hidden">
+          <div class="empty-state-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 28px; height: 28px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </div>
+          <div class="empty-state-title">No spending data yet</div>
+          <p>Add expenses to start seeing insights.</p>
+        </div>
+
+        <!-- Analytics Content Container -->
+        <div id="insights-content" class="hidden" style="display: flex; flex-direction: column; gap: var(--space-6);">
+          
+          <!-- 1. Top Overview Cards Row (Desktop: 4 columns, Mobile: stacked) -->
+          <div class="summary-cards-grid">
+            <div class="stat-card">
+              <span class="stat-label">Total Spending</span>
+              <span id="analytics-total-spending" class="stat-value">₹0.00</span>
+              <span id="analytics-total-count" class="stat-subtext">0 expenses recorded</span>
+            </div>
+
+            <div class="stat-card">
+              <span class="stat-label">Average Expense</span>
+              <span id="analytics-average-expense" class="stat-value">₹0.00</span>
+              <span class="stat-subtext">Per transaction</span>
+            </div>
+
+            <div class="stat-card">
+              <span class="stat-label">Highest Expense</span>
+              <span id="analytics-highest-amount" class="stat-value" style="color: var(--color-danger-text);">₹0.00</span>
+              <span id="analytics-highest-title" class="stat-subtext">-</span>
+            </div>
+
+            <div class="stat-card">
+              <span class="stat-label">Lowest Expense</span>
+              <span id="analytics-lowest-amount" class="stat-value" style="color: var(--color-success-text);">₹0.00</span>
+              <span id="analytics-lowest-title" class="stat-subtext">-</span>
+            </div>
+          </div>
+
+          <!-- 2. Smart Insights Callout Box -->
+          <div class="card" style="border-left: 4px solid var(--color-primary); background: var(--color-surface); padding: 16px;">
+            <h3 style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+              💡 Smart Insights
+            </h3>
+            <div id="analytics-smart-insights-list" style="display: flex; flex-direction: column; gap: 8px;">
+              <!-- Dynamic bulleted insight items -->
+            </div>
+          </div>
+
+          <!-- 3. Time-Based Spending & MoM Comparison Grid -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4);">
+            <div class="card">
+              <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 12px;">Time-Based Spending</h3>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: center;">
+                <div style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Today</div>
+                  <strong id="analytics-period-today" style="font-size: 1.1rem; display: block; margin-top: 2px;">₹0.00</strong>
+                </div>
+                <div style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">This Week</div>
+                  <strong id="analytics-period-week" style="font-size: 1.1rem; display: block; margin-top: 2px;">₹0.00</strong>
+                </div>
+                <div style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">This Month</div>
+                  <strong id="analytics-period-month" style="font-size: 1.1rem; display: block; margin-top: 2px;">₹0.00</strong>
+                </div>
+                <div style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+                  <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Previous Month</div>
+                  <strong id="analytics-period-prev-month" style="font-size: 1.1rem; display: block; margin-top: 2px;">₹0.00</strong>
+                </div>
+              </div>
+
+              <div id="analytics-mom-comparison-badge" style="margin-top: 12px; font-size: 0.85rem; font-weight: 500; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--color-bg-subtle);">
+                <!-- Dynamic MoM comparison message -->
+              </div>
+            </div>
+
+            <!-- Member Actual Paid Contributions -->
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="font-size: 1rem; font-weight: 600;">Member Actual Spending</h3>
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Amount paid out of pocket</span>
+              </div>
+              <div id="analytics-member-spending-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Dynamic Member Paid Bars -->
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Category Breakdown Section -->
           <div class="card">
-            <h3 style="font-size: var(--font-size-base); font-weight: 600; margin-bottom: var(--space-4);">Category Breakdown</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+              <h3 style="font-size: 1rem; font-weight: 600;">Category Breakdown</h3>
+              <div id="analytics-category-highlights" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <!-- Category highlight badges -->
+              </div>
+            </div>
             <div id="stats-categories-list">
               <!-- Dynamic Category Bars -->
             </div>
           </div>
 
-          <div class="card">
-            <h3 style="font-size: var(--font-size-base); font-weight: 600; margin-bottom: var(--space-4);">Key Statistics</h3>
-            <div style="display: flex; flex-direction: column; gap: var(--space-4);">
-              <div style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md);">
-                <span class="stat-label">Top Spender</span>
-                <div id="stat-top-spender" style="font-size: 1.2rem; font-weight: 700; margin-top: 4px;">-</div>
-              </div>
-              <div style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md);">
-                <span class="stat-label">Average Spend Per Member</span>
-                <div id="stat-avg-spend" style="font-size: 1.2rem; font-weight: 700; margin-top: 4px;">₹0.00</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 

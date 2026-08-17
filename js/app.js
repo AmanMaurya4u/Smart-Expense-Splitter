@@ -22,6 +22,8 @@ let appState = {
 // State for active edit/delete operations
 let editingExpenseId = null;
 let deletingExpenseId = null;
+let editingRecurringId = null;
+let deletingRecurringId = null;
 
 // Filter state
 let currentFilterCategory = 'ALL';
@@ -73,9 +75,11 @@ function navigateInitialScreen() {
  */
 function renderFullDashboard() {
   ui.renderHeader(appState);
+  ui.renderRecurringDueWidget(appState);
   ui.renderBudgetWidget(appState);
   ui.renderSummaryCards(appState);
   ui.renderExpenseList(appState, currentFilterCategory, currentSearchQuery, currentSortBy);
+  ui.renderRecurringExpensesList(appState);
   ui.renderMembersList(appState);
   ui.renderSettlementsList(appState);
   ui.renderStatistics(appState);

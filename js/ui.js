@@ -689,6 +689,143 @@ function renderActivityTimeline(appState, filterCategory = 'ALL') {
   }).join('');
 }
 
+/**
+ * Renders Recurring Expenses Due Banner Widget at top of dashboard
+ */
+function renderRecurringDueWidget(appState) {
+  const container = document.getElementById('recurring-due-banner');
+  if (!container) return;
+
+  const recurringList = appState.recurringExpenses || [];
+  const memberMap = {};
+  (appState.members || []).forEach(m => { memberMap[m.id] = m.name; });
+
+  const dueItems = recurringList.filter(item => {
+    if (item.status === 'paused') return false;
+    const statusInfo = calc.getRecurringDueStatus ? calc.getRecurringDueStatus(item.nextDueDate, item.status) : { isDue: false };
+    return statusInfo.isDue;
+  });
+
+  if (dueItems.length === 0) {
+    container.classList.add('hidden');
+    container.innerHTML = '';
+    return;
+  }
+
+  container.classList.remove('hidden');
+
+  container.innerHTML = `
+    <div class="card" style="border-left: 4px solid var(--color-warning-text); background: var(--color-surface); padding: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h3 style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          🔔 Expenses Due (${dueItems.length})
+        </h3>
+        <span style="font-size: 0.8rem; color: var(--color-text-muted);">Action required to convert scheduled templates</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${dueItems.map(item => {
+          const statusInfo = calc.getRecurringDueStatus ? calc.getRecurringDueStatus(item.nextDueDate, item.status) : { code: 'DUE_TODAY', label: 'Due Today' };
+          const isOverdue = statusInfo.code === 'OVERDUE';
+          const payerName = memberMap[item.paidBy] || 'Unknown';
+          return `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--color-bg-subtle); padding: 10px 14px; border-radius: var(--radius-sm); flex-wrap: wrap; gap: 8px;">
+              <div>
+                <div style="font-weight: 600; font-size: 0.95rem;">
+                  ${escapeHtml(item.title)} — <span style="color: ${isOverdue ? 'var(--color-danger-text)' : 'var(--color-warning-text)'};">${statusInfo.label}</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 2px;">
+                  ₹${item.amount.toFixed(2)} • Paid by <strong>${escapeHtml(payerName)}</strong> • Frequency: ${item.frequency} • Due: ${item.nextDueDate}
+                </div>
+              </div>
+              <button class="btn btn-primary btn-sm btn-convert-recurring" data-id="${item.id}">Add Expense</button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Renders Recurring Expenses Management tab list
+ */
+function renderRecurringExpensesList(appState) {
+  const container = document.getElementById('recurring-expenses-grid');
+  const emptyState = document.getElementById('recurring-empty-state');
+  if (!container) return;
+
+  const recurringList = appState.recurringExpenses || [];
+  const memberMap = {};
+  (appState.members || []).forEach(m => { memberMap[m.id] = m.name; });
+
+  if (recurringList.length === 0) {
+    container.classList.add('hidden');
+    if (emptyState) emptyState.classList.remove('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+  if (emptyState) emptyState.classList.add('hidden');
+
+  container.innerHTML = recurringList.map(item => {
+    const payerName = memberMap[item.paidBy] || 'Unknown';
+    const statusInfo = calc.getRecurringDueStatus ? calc.getRecurringDueStatus(item.nextDueDate, item.status) : { code: 'UPCOMING', label: 'Active' };
+
+    let badgeClass = 'badge-success';
+    let badgeText = statusInfo.label;
+
+    if (item.status === 'paused') {
+      badgeClass = 'badge-secondary';
+      badgeText = 'Paused';
+    } else if (statusInfo.code === 'OVERDUE') {
+      badgeClass = 'badge-danger';
+      badgeText = statusInfo.label;
+    } else if (statusInfo.code === 'DUE_TODAY') {
+      badgeClass = 'badge-warning';
+      badgeText = 'Due Today';
+    }
+
+    const participantCount = (item.participants || []).length;
+    const freqCapitalized = item.frequency.charAt(0).toUpperCase() + item.frequency.slice(1);
+
+    return `
+      <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 10px; ${item.status === 'paused' ? 'opacity: 0.75;' : ''}">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <h4 style="font-size: 1.05rem; font-weight: 600; margin: 0;">${escapeHtml(item.title)}</h4>
+              <span class="badge ${badgeClass}">${badgeText}</span>
+              <span class="badge badge-category">${escapeHtml(item.category || 'Other')}</span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 4px;">
+              Paid by <strong>${escapeHtml(payerName)}</strong> • Split with ${participantCount} member${participantCount > 1 ? 's' : ''} (${item.splitType})
+            </div>
+          </div>
+          <span style="font-size: 1.2rem; font-weight: 700;">₹${item.amount.toFixed(2)}</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; background: var(--color-bg-subtle); padding: 10px; border-radius: var(--radius-sm); font-size: 0.8rem;">
+          <div>Frequency: <strong>${freqCapitalized}</strong></div>
+          <div>Start Date: <strong>${item.startDate || '-'}</strong></div>
+          <div>Next Due Date: <strong>${item.nextDueDate}</strong></div>
+          <div>Last Generated: <strong>${item.lastGeneratedDate || 'Never'}</strong></div>
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+          ${item.status === 'active' ? `
+            <button class="btn btn-primary btn-sm btn-convert-recurring" data-id="${item.id}" style="flex: 1; min-width: 110px;">Add Expense</button>
+          ` : ''}
+          <button class="btn btn-secondary btn-sm btn-toggle-pause-recurring" data-id="${item.id}">
+            ${item.status === 'paused' ? 'Resume' : 'Pause'}
+          </button>
+          <button class="btn btn-secondary btn-sm btn-edit-recurring" data-id="${item.id}">Edit</button>
+          <button class="btn btn-danger btn-sm btn-delete-recurring" data-id="${item.id}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 // Utility HTML escape helper to prevent XSS
 function escapeHtml(str) {
   return String(str || '')
@@ -716,6 +853,8 @@ if (typeof module !== 'undefined' && module.exports) {
     renderStatistics,
     renderBudgetWidget,
     renderActivityTimeline,
+    renderRecurringDueWidget,
+    renderRecurringExpensesList,
     escapeHtml
   };
 }

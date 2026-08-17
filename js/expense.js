@@ -578,6 +578,303 @@ function removeGroupBudget(appState) {
   return { success: true };
 }
 
+/**
+ * Adds a new recurring expense template.
+ * 
+ * @param {Object} appState 
+ * @param {Object} recurringData 
+ * @returns {{ success: boolean, error?: string, recurring?: Object }}
+ */
+function addRecurringExpense(appState, recurringData) {
+  if (!Array.isArray(appState.recurringExpenses)) {
+    appState.recurringExpenses = [];
+  }
+
+  const { title, amount, paidBy, participants, splitType, customShares, category, frequency, startDate, nextDueDate, status } = recurringData;
+
+  if (!title || title.trim().length === 0 || title.length > 50) {
+    return { success: false, error: 'Please enter a title (max 50 chars).' };
+  }
+
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return { success: false, error: 'Please enter a valid amount greater than 0.' };
+  }
+
+  if (!paidBy || !appState.members.some(m => m.id === paidBy)) {
+    return { success: false, error: 'Please select a valid member who paid.' };
+  }
+
+  if (!participants || !Array.isArray(participants) || participants.length === 0) {
+    return { success: false, error: 'Please select at least one participant.' };
+  }
+
+  if (splitType === 'custom') {
+    const customValidation = calcModule.calculateCustomSplit(numAmount, customShares);
+    if (!customValidation.isValid) {
+      return {
+        success: false,
+        error: `Custom shares sum (₹${customValidation.sum}) must equal total expense amount (₹${numAmount}).`
+      };
+    }
+  }
+
+  const payerObj = appState.members.find(m => m.id === paidBy);
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+  const validFreq = ['weekly', 'monthly', 'yearly'].includes(frequency) ? frequency : 'monthly';
+  const start = startDate || new Date().toISOString().split('T')[0];
+  const due = nextDueDate || start;
+
+  const newRecurring = {
+    id: `recurring_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    title: title.trim(),
+    amount: Math.round(numAmount * 100) / 100,
+    paidBy,
+    participants: [...participants],
+    splitType: splitType || 'equal',
+    customShares: splitType === 'custom' ? { ...customShares } : {},
+    category: category || 'Other',
+    frequency: validFreq,
+    startDate: start,
+    nextDueDate: due,
+    status: status === 'paused' ? 'paused' : 'active',
+    lastGeneratedDate: null,
+    createdAt: new Date().toISOString()
+  };
+
+  appState.recurringExpenses.unshift(newRecurring);
+
+  const freqLabelMap = { weekly: 'week', monthly: 'month', yearly: 'year' };
+  logActivity(appState, {
+    type: 'recurring_added',
+    category: 'expenses',
+    message: `${paidByName} added recurring expense ${newRecurring.title} — ₹${newRecurring.amount.toFixed(2)}/${freqLabelMap[validFreq] || validFreq}`,
+    actor: paidByName,
+    amount: newRecurring.amount,
+    relatedEntityId: newRecurring.id
+  });
+
+  storeModule.saveData(appState);
+  return { success: true, recurring: newRecurring };
+}
+
+/**
+ * Edits an existing recurring expense template.
+ * 
+ * @param {Object} appState 
+ * @param {string} recurringId 
+ * @param {Object} updatedData 
+ * @returns {{ success: boolean, error?: string, recurring?: Object }}
+ */
+function editRecurringExpense(appState, recurringId, updatedData) {
+  if (!Array.isArray(appState.recurringExpenses)) {
+    return { success: false, error: 'Recurring expense not found.' };
+  }
+
+  const index = appState.recurringExpenses.findIndex(r => r.id === recurringId);
+  if (index === -1) {
+    return { success: false, error: 'Recurring expense not found.' };
+  }
+
+  const { title, amount, paidBy, participants, splitType, customShares, category, frequency, startDate, nextDueDate, status } = updatedData;
+
+  if (!title || title.trim().length === 0 || title.length > 50) {
+    return { success: false, error: 'Please enter a title (max 50 chars).' };
+  }
+
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return { success: false, error: 'Please enter a valid amount greater than 0.' };
+  }
+
+  if (!paidBy || !appState.members.some(m => m.id === paidBy)) {
+    return { success: false, error: 'Please select a valid member who paid.' };
+  }
+
+  if (!participants || !Array.isArray(participants) || participants.length === 0) {
+    return { success: false, error: 'Please select at least one participant.' };
+  }
+
+  if (splitType === 'custom') {
+    const customValidation = calcModule.calculateCustomSplit(numAmount, customShares);
+    if (!customValidation.isValid) {
+      return {
+        success: false,
+        error: `Custom shares sum (₹${customValidation.sum}) must equal total expense amount (₹${numAmount}).`
+      };
+    }
+  }
+
+  const payerObj = appState.members.find(m => m.id === paidBy);
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+  const validFreq = ['weekly', 'monthly', 'yearly'].includes(frequency) ? frequency : appState.recurringExpenses[index].frequency;
+
+  const existing = appState.recurringExpenses[index];
+
+  appState.recurringExpenses[index] = {
+    ...existing,
+    title: title.trim(),
+    amount: Math.round(numAmount * 100) / 100,
+    paidBy,
+    participants: [...participants],
+    splitType: splitType || 'equal',
+    customShares: splitType === 'custom' ? { ...customShares } : {},
+    category: category || 'Other',
+    frequency: validFreq,
+    startDate: startDate || existing.startDate,
+    nextDueDate: nextDueDate || existing.nextDueDate,
+    status: status ? (status === 'paused' ? 'paused' : 'active') : existing.status
+  };
+
+  logActivity(appState, {
+    type: 'recurring_edited',
+    category: 'expenses',
+    message: `${paidByName} edited recurring expense ${title.trim()}`,
+    actor: paidByName,
+    amount: Math.round(numAmount * 100) / 100,
+    relatedEntityId: recurringId
+  });
+
+  storeModule.saveData(appState);
+  return { success: true, recurring: appState.recurringExpenses[index] };
+}
+
+/**
+ * Toggles status of recurring expense between active and paused.
+ * 
+ * @param {Object} appState 
+ * @param {string} recurringId 
+ * @returns {{ success: boolean, error?: string, recurring?: Object }}
+ */
+function togglePauseRecurringExpense(appState, recurringId) {
+  if (!Array.isArray(appState.recurringExpenses)) {
+    return { success: false, error: 'Recurring expense not found.' };
+  }
+
+  const target = appState.recurringExpenses.find(r => r.id === recurringId);
+  if (!target) {
+    return { success: false, error: 'Recurring expense not found.' };
+  }
+
+  const payerObj = appState.members.find(m => m.id === target.paidBy);
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+
+  if (target.status === 'paused') {
+    target.status = 'active';
+    logActivity(appState, {
+      type: 'recurring_resumed',
+      category: 'expenses',
+      message: `${paidByName} resumed recurring expense ${target.title}`,
+      actor: paidByName,
+      relatedEntityId: recurringId
+    });
+  } else {
+    target.status = 'paused';
+    logActivity(appState, {
+      type: 'recurring_paused',
+      category: 'expenses',
+      message: `${paidByName} paused recurring expense ${target.title}`,
+      actor: paidByName,
+      relatedEntityId: recurringId
+    });
+  }
+
+  storeModule.saveData(appState);
+  return { success: true, recurring: target };
+}
+
+/**
+ * Deletes a recurring expense template.
+ * 
+ * @param {Object} appState 
+ * @param {string} recurringId 
+ * @returns {{ success: boolean }}
+ */
+function deleteRecurringExpense(appState, recurringId) {
+  if (!Array.isArray(appState.recurringExpenses)) {
+    return { success: true };
+  }
+
+  const target = appState.recurringExpenses.find(r => r.id === recurringId);
+  const title = target ? target.title : 'Recurring Expense';
+  const payerObj = target ? appState.members.find(m => m.id === target.paidBy) : null;
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+
+  appState.recurringExpenses = appState.recurringExpenses.filter(r => r.id !== recurringId);
+
+  logActivity(appState, {
+    type: 'recurring_deleted',
+    category: 'expenses',
+    message: `${paidByName} deleted recurring expense ${title}`,
+    actor: paidByName,
+    relatedEntityId: recurringId
+  });
+
+  storeModule.saveData(appState);
+  return { success: true };
+}
+
+/**
+ * Converts a recurring expense occurrence into a real expense.
+ * Enforces duplicate protection so the same due date occurrence cannot be converted twice.
+ * 
+ * @param {Object} appState 
+ * @param {string} recurringId 
+ * @returns {{ success: boolean, error?: string, expense?: Object, recurring?: Object }}
+ */
+function convertRecurringToExpense(appState, recurringId) {
+  if (!Array.isArray(appState.recurringExpenses)) {
+    return { success: false, error: 'Recurring expense not found.' };
+  }
+
+  const item = appState.recurringExpenses.find(r => r.id === recurringId);
+  if (!item) {
+    return { success: false, error: 'Recurring expense not found.' };
+  }
+
+  // Duplicate Protection: Do not allow the same occurrence date to be added twice
+  if (item.lastGeneratedDate === item.nextDueDate) {
+    return { success: false, error: `The occurrence for ${item.nextDueDate} has already been added as an actual expense.` };
+  }
+
+  const currentDueDate = item.nextDueDate;
+
+  // Add actual expense using existing addExpense logic
+  const expRes = addExpense(appState, {
+    title: item.title,
+    amount: item.amount,
+    category: item.category || 'Other',
+    paidBy: item.paidBy,
+    splitType: item.splitType,
+    participants: item.participants,
+    customShares: item.customShares,
+    date: currentDueDate
+  });
+
+  if (!expRes.success) {
+    return expRes;
+  }
+
+  // Update recurring expense tracking and advance due date
+  item.lastGeneratedDate = currentDueDate;
+  item.nextDueDate = calcModule.calculateNextDueDate(currentDueDate, item.frequency);
+
+  const payerObj = appState.members.find(m => m.id === item.paidBy);
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+
+  logActivity(appState, {
+    type: 'recurring_converted',
+    category: 'expenses',
+    message: `${paidByName} added ${item.title} — ₹${item.amount.toFixed(2)}`,
+    actor: paidByName,
+    amount: item.amount,
+    relatedEntityId: expRes.expense.id
+  });
+
+  storeModule.saveData(appState);
+  return { success: true, expense: expRes.expense, recurring: item };
+}
+
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -595,6 +892,11 @@ if (typeof module !== 'undefined' && module.exports) {
     deletePartialPayment,
     toggleSettlementStatus,
     setGroupBudget,
-    removeGroupBudget
+    removeGroupBudget,
+    addRecurringExpense,
+    editRecurringExpense,
+    togglePauseRecurringExpense,
+    deleteRecurringExpense,
+    convertRecurringToExpense
   };
 }

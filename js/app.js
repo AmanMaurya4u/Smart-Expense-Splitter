@@ -916,3 +916,243 @@ function handleSetBudgetSubmit() {
   renderFullDashboard();
   ui.showToast(`Group budget set to ₹${res.budget.toFixed(2)}`, 'success');
 }
+
+/**
+ * Prepares and opens Add/Edit Recurring Expense modal
+ */
+function openRecurringModal(editId = null) {
+  const modalTitle = document.getElementById('modal-recurring-title');
+  const inputTitle = document.getElementById('input-recurring-title');
+  const inputAmount = document.getElementById('input-recurring-amount');
+  const selectPaidBy = document.getElementById('select-recurring-paid-by');
+  const selectFrequency = document.getElementById('select-recurring-frequency');
+  const selectCategory = document.getElementById('select-recurring-category');
+  const inputStartDate = document.getElementById('input-recurring-start-date');
+  const inputNextDueDate = document.getElementById('input-recurring-next-due-date');
+  const selectStatus = document.getElementById('select-recurring-status');
+  const participantsContainer = document.getElementById('recurring-participants-checkboxes');
+  const btnEqual = document.getElementById('btn-recurring-split-equal');
+  const btnCustom = document.getElementById('btn-recurring-split-custom');
+  const customContainer = document.getElementById('recurring-custom-shares-container');
+
+  if (!selectPaidBy || !participantsContainer) return;
+
+  ui.clearFieldError(inputTitle);
+  ui.clearFieldError(inputAmount);
+
+  // Populate Paid By dropdown
+  selectPaidBy.innerHTML = appState.members.map(m => `
+    <option value="${m.id}">${ui.escapeHtml(m.name)}</option>
+  `).join('');
+
+  const target = editId ? (appState.recurringExpenses || []).find(r => r.id === editId) : null;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (target) {
+    if (modalTitle) modalTitle.textContent = 'Edit Recurring Expense';
+    if (inputTitle) inputTitle.value = target.title;
+    if (inputAmount) inputAmount.value = target.amount;
+    if (selectPaidBy) selectPaidBy.value = target.paidBy;
+    if (selectFrequency) selectFrequency.value = target.frequency || 'monthly';
+    if (selectCategory) selectCategory.value = target.category || 'Other';
+    if (inputStartDate) inputStartDate.value = target.startDate || todayStr;
+    if (inputNextDueDate) inputNextDueDate.value = target.nextDueDate || todayStr;
+    if (selectStatus) selectStatus.value = target.status || 'active';
+
+    if (target.splitType === 'custom') {
+      btnCustom.classList.add('active');
+      btnEqual.classList.remove('active');
+      customContainer.classList.remove('hidden');
+    } else {
+      btnEqual.classList.add('active');
+      btnCustom.classList.remove('active');
+      customContainer.classList.add('hidden');
+    }
+  } else {
+    if (modalTitle) modalTitle.textContent = 'Add Recurring Expense';
+    if (inputTitle) inputTitle.value = '';
+    if (inputAmount) inputAmount.value = '';
+    if (selectFrequency) selectFrequency.value = 'monthly';
+    if (selectCategory) selectCategory.value = 'Food';
+    if (inputStartDate) inputStartDate.value = todayStr;
+    if (inputNextDueDate) inputNextDueDate.value = todayStr;
+    if (selectStatus) selectStatus.value = 'active';
+
+    btnEqual.classList.add('active');
+    btnCustom.classList.remove('active');
+    customContainer.classList.add('hidden');
+  }
+
+  // Auto calculate next due date when start date or frequency changes for new items
+  function updateAutoNextDueDate() {
+    if (!editingRecurringId && inputStartDate && inputNextDueDate && selectFrequency) {
+      const nextDate = calcLogic.calculateNextDueDate ? calcLogic.calculateNextDueDate(inputStartDate.value, selectFrequency.value) : inputStartDate.value;
+      inputNextDueDate.value = nextDate;
+    }
+  }
+
+  if (inputStartDate) inputStartDate.onchange = updateAutoNextDueDate;
+  if (selectFrequency) selectFrequency.onchange = updateAutoNextDueDate;
+
+  // Populate Participants Checkboxes
+  const selectedParticipants = target ? target.participants : appState.members.map(m => m.id);
+
+  participantsContainer.innerHTML = appState.members.map(m => {
+    const isChecked = selectedParticipants.includes(m.id);
+    return `
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+        <input type="checkbox" class="chk-recurring-participant" value="${m.id}" ${isChecked ? 'checked' : ''}>
+        <span>${ui.escapeHtml(m.name)}</span>
+      </label>
+    `;
+  }).join('');
+
+  if (target && target.splitType === 'custom') {
+    renderRecurringCustomSharesInputs(target.customShares);
+  }
+
+  participantsContainer.querySelectorAll('.chk-recurring-participant').forEach(chk => {
+    chk.addEventListener('change', () => {
+      if (btnCustom.classList.contains('active')) {
+        renderRecurringCustomSharesInputs();
+      }
+    });
+  });
+
+  ui.openModal('modal-recurring-expense');
+}
+
+/**
+ * Dynamically renders custom shares inputs for checked recurring participants
+ */
+function renderRecurringCustomSharesInputs(existingShares = {}) {
+  const container = document.getElementById('recurring-custom-shares-inputs-list');
+  const amountInput = document.getElementById('input-recurring-amount');
+  const statusNotice = document.getElementById('recurring-custom-shares-status');
+  if (!container) return;
+
+  const checkedCheckboxes = Array.from(document.querySelectorAll('.chk-recurring-participant:checked'));
+  const checkedIds = checkedCheckboxes.map(c => c.value);
+
+  const memberMap = {};
+  appState.members.forEach(m => { memberMap[m.id] = m.name; });
+
+  container.innerHTML = checkedIds.map(id => {
+    const val = existingShares[id] !== undefined ? existingShares[id] : '';
+    return `
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+        <span style="font-size: 0.9rem; font-weight: 500;">${ui.escapeHtml(memberMap[id] || id)}</span>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <span>₹</span>
+          <input type="number" step="0.01" min="0" class="form-control input-recurring-custom-share" data-id="${id}" value="${val}" style="width: 100px; text-align: right;">
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  function updateCustomValidationStatus() {
+    const totalAmount = parseFloat(amountInput.value) || 0;
+    const shareInputs = Array.from(container.querySelectorAll('.input-recurring-custom-share'));
+
+    const sharesMap = {};
+    shareInputs.forEach(inp => {
+      const id = inp.getAttribute('data-id');
+      sharesMap[id] = parseFloat(inp.value) || 0;
+    });
+
+    const res = calcLogic.calculateCustomSplit(totalAmount, sharesMap);
+    if (!statusNotice) return;
+
+    if (res.isValid) {
+      statusNotice.textContent = `✓ Allocated exact ₹${totalAmount.toFixed(2)}`;
+      statusNotice.style.color = 'var(--color-success-text)';
+    } else {
+      const rem = res.remaining;
+      if (rem > 0) {
+        statusNotice.textContent = `Allocated ₹${res.sum.toFixed(2)} / ₹${totalAmount.toFixed(2)} — ₹${rem.toFixed(2)} remaining`;
+      } else {
+        statusNotice.textContent = `Allocated ₹${res.sum.toFixed(2)} / ₹${totalAmount.toFixed(2)} — Over-allocated by ₹${Math.abs(rem).toFixed(2)}`;
+      }
+      statusNotice.style.color = 'var(--color-danger-text)';
+    }
+  }
+
+  container.querySelectorAll('.input-recurring-custom-share').forEach(inp => {
+    inp.addEventListener('input', updateCustomValidationStatus);
+  });
+  amountInput.addEventListener('input', updateCustomValidationStatus);
+  updateCustomValidationStatus();
+}
+
+/**
+ * Handles Add/Edit Recurring Expense form submission
+ */
+function handleRecurringExpenseFormSubmit() {
+  const inputTitle = document.getElementById('input-recurring-title');
+  const inputAmount = document.getElementById('input-recurring-amount');
+  const selectPaidBy = document.getElementById('select-recurring-paid-by');
+  const selectFrequency = document.getElementById('select-recurring-frequency');
+  const selectCategory = document.getElementById('select-recurring-category');
+  const inputStartDate = document.getElementById('input-recurring-start-date');
+  const inputNextDueDate = document.getElementById('input-recurring-next-due-date');
+  const selectStatus = document.getElementById('select-recurring-status');
+  const btnCustom = document.getElementById('btn-recurring-split-custom');
+  const customContainer = document.getElementById('recurring-custom-shares-container');
+
+  ui.clearFieldError(inputTitle);
+  ui.clearFieldError(inputAmount);
+
+  const title = inputTitle.value;
+  const amount = inputAmount.value;
+  const paidBy = selectPaidBy.value;
+  const frequency = selectFrequency.value;
+  const category = selectCategory.value;
+  const startDate = inputStartDate.value;
+  const nextDueDate = inputNextDueDate.value;
+  const status = selectStatus ? selectStatus.value : 'active';
+
+  const checkedCheckboxes = Array.from(document.querySelectorAll('.chk-recurring-participant:checked'));
+  const participants = checkedCheckboxes.map(c => c.value);
+
+  const splitType = btnCustom.classList.contains('active') ? 'custom' : 'equal';
+  const customShares = {};
+
+  if (splitType === 'custom' && customContainer) {
+    customContainer.querySelectorAll('.input-recurring-custom-share').forEach(inp => {
+      const id = inp.getAttribute('data-id');
+      customShares[id] = parseFloat(inp.value) || 0;
+    });
+  }
+
+  const payload = {
+    title,
+    amount,
+    paidBy,
+    participants,
+    splitType,
+    customShares,
+    category,
+    frequency,
+    startDate,
+    nextDueDate,
+    status
+  };
+
+  let res;
+  if (editingRecurringId) {
+    res = expense.editRecurringExpense(appState, editingRecurringId, payload);
+  } else {
+    res = expense.addRecurringExpense(appState, payload);
+  }
+
+  if (!res.success) {
+    ui.showToast(res.error, 'danger');
+    return;
+  }
+
+  const wasEditing = editingRecurringId;
+  editingRecurringId = null;
+  ui.closeModal('modal-recurring-expense');
+  renderFullDashboard();
+  ui.showToast(`Recurring expense ${wasEditing ? 'updated' : 'added'} successfully`, 'success');
+}

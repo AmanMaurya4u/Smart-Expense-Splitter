@@ -25,6 +25,9 @@ let deletingExpenseId = null;
 let editingRecurringId = null;
 let deletingRecurringId = null;
 
+// Receipt upload transient state
+let currentExpenseReceipt = null;
+
 // Filter state
 let currentFilterCategory = 'ALL';
 let currentSearchQuery = '';
@@ -407,8 +410,92 @@ function bindEventListeners() {
       const id = e.target.getAttribute('data-id');
       deletingRecurringId = id;
       ui.openModal('modal-confirm-delete-recurring');
+    } else if (e.target.classList.contains('btn-view-receipt')) {
+      const id = e.target.getAttribute('data-id');
+      const targetExp = appState.expenses.find(exp => exp.id === id);
+      if (targetExp && targetExp.receipt && targetExp.receipt.data) {
+        ui.openReceiptLightboxModal(targetExp.receipt, targetExp.title);
+      }
     }
   });
+
+  // Receipt File Attachment & Preview Triggers
+  const btnTriggerUpload = document.getElementById('btn-trigger-upload-receipt');
+  const btnReplaceReceipt = document.getElementById('btn-replace-receipt');
+  const inputReceiptFile = document.getElementById('input-expense-receipt');
+  
+  if (btnTriggerUpload && inputReceiptFile) {
+    btnTriggerUpload.addEventListener('click', () => inputReceiptFile.click());
+  }
+  if (btnReplaceReceipt && inputReceiptFile) {
+    btnReplaceReceipt.addEventListener('click', () => inputReceiptFile.click());
+  }
+
+  if (inputReceiptFile) {
+    inputReceiptFile.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const validation = calcLogic.validateReceiptFile(file);
+      if (!validation.isValid) {
+        ui.showToast(validation.error, 'danger');
+        e.target.value = '';
+        return;
+      }
+
+      calcLogic.compressReceiptImage(file, 1600, 0.75).then(compressedObj => {
+        currentExpenseReceipt = compressedObj;
+        ui.renderReceiptPreview(currentExpenseReceipt);
+        ui.showToast('Receipt attached', 'info');
+        e.target.value = '';
+      }).catch(err => {
+        ui.showToast(err.message || 'Failed to process receipt image.', 'danger');
+        e.target.value = '';
+      });
+    });
+  }
+
+  const btnViewPreviewReceipt = document.getElementById('btn-view-preview-receipt');
+  if (btnViewPreviewReceipt) {
+    btnViewPreviewReceipt.addEventListener('click', () => {
+      if (currentExpenseReceipt && currentExpenseReceipt.data) {
+        const titleVal = (document.getElementById('input-expense-title') || {}).value || 'Preview';
+        ui.openReceiptLightboxModal(currentExpenseReceipt, titleVal);
+      }
+    });
+  }
+
+  const btnRemoveReceiptForm = document.getElementById('btn-remove-receipt-form');
+  if (btnRemoveReceiptForm) {
+    btnRemoveReceiptForm.addEventListener('click', () => {
+      ui.openModal('modal-confirm-remove-receipt');
+    });
+  }
+
+  const btnConfirmRemoveReceipt = document.getElementById('btn-confirm-remove-receipt');
+  if (btnConfirmRemoveReceipt) {
+    btnConfirmRemoveReceipt.addEventListener('click', () => {
+      currentExpenseReceipt = null;
+      ui.renderReceiptPreview(null);
+      ui.closeModal('modal-confirm-remove-receipt');
+      ui.showToast('Receipt removed', 'info');
+    });
+  }
+
+  const btnZoomReceipt = document.getElementById('btn-zoom-receipt');
+  if (btnZoomReceipt) {
+    btnZoomReceipt.addEventListener('click', () => {
+      const img = document.getElementById('lightbox-receipt-image');
+      if (!img) return;
+      if (img.style.maxHeight === 'none') {
+        img.style.maxHeight = '60vh';
+        btnZoomReceipt.textContent = 'Toggle Full Size';
+      } else {
+        img.style.maxHeight = 'none';
+        btnZoomReceipt.textContent = 'Fit to Screen';
+      }
+    });
+  }
 
   // Set Budget Form Submission
   const formSetBudget = document.getElementById('form-set-budget');
@@ -605,6 +692,13 @@ function openExpenseModal(editId = null) {
 
   const targetExp = editId ? appState.expenses.find(e => e.id === editId) : null;
 
+  if (targetExp && targetExp.receipt && targetExp.receipt.data) {
+    currentExpenseReceipt = { ...targetExp.receipt };
+  } else {
+    currentExpenseReceipt = null;
+  }
+  ui.renderReceiptPreview(currentExpenseReceipt);
+
   if (targetExp) {
     if (modalTitle) modalTitle.textContent = 'Edit Expense';
     if (inputTitle) inputTitle.value = targetExp.title;
@@ -767,9 +861,11 @@ function handleExpenseFormSubmit() {
     splitType,
     participants,
     customShares,
-    date
+    date,
+    receipt: currentExpenseReceipt
   };
 
+  const isEditing = !!editingExpenseId;
   let res;
   if (editingExpenseId) {
     res = expense.editExpense(appState, editingExpenseId, payload);
@@ -782,10 +878,11 @@ function handleExpenseFormSubmit() {
     return;
   }
 
+  currentExpenseReceipt = null;
   editingExpenseId = null;
   ui.closeModal('modal-expense');
   renderFullDashboard();
-  ui.showToast(`Expense ${editingExpenseId ? 'updated' : 'added'} successfully`, 'success');
+  ui.showToast(`Expense ${isEditing ? 'updated' : 'added'} successfully`, 'success');
 }
 
 // Active state for partial payment modal

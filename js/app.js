@@ -19,6 +19,9 @@ let appState = {
   settlements: []
 };
 
+// Simulation Sandbox State Instance
+let simulationState = null;
+
 // State for active edit/delete operations
 let editingExpenseId = null;
 let deletingExpenseId = null;
@@ -87,6 +90,10 @@ function renderFullDashboard() {
   ui.renderSettlementsList(appState);
   ui.renderStatistics(appState);
   ui.renderActivityTimeline(appState, currentActivityFilterCategory);
+
+  if (simulationState) {
+    ui.renderSimulatorTab(appState, simulationState);
+  }
 }
 
 /**
@@ -266,7 +273,7 @@ function bindEventListeners() {
       e.target.classList.add('active');
 
       const targetTab = e.target.getAttribute('data-tab');
-      const tabs = ['tab-expenses', 'tab-recurring', 'tab-members', 'tab-settlements', 'tab-stats', 'tab-activity'];
+      const tabs = ['tab-expenses', 'tab-recurring', 'tab-members', 'tab-settlements', 'tab-stats', 'tab-activity', 'tab-simulator'];
       tabs.forEach(t => {
         const el = document.getElementById(t);
         if (el) {
@@ -277,6 +284,13 @@ function bindEventListeners() {
           }
         }
       });
+
+      if (targetTab === 'simulator') {
+        if (!simulationState) {
+          simulationState = expense.initSimulationState(appState);
+        }
+        ui.renderSimulatorTab(appState, simulationState);
+      }
     });
   });
 
@@ -416,8 +430,69 @@ function bindEventListeners() {
       if (targetExp && targetExp.receipt && targetExp.receipt.data) {
         ui.openReceiptLightboxModal(targetExp.receipt, targetExp.title);
       }
+    } else if (e.target.classList.contains('btn-remove-sim-change')) {
+      const changeId = e.target.getAttribute('data-id');
+      if (simulationState) {
+        simulationState = expense.removeSimulationChange(simulationState, appState, changeId);
+        ui.renderSimulatorTab(appState, simulationState);
+        ui.showToast('Simulation change removed', 'info');
+      }
     }
   });
+
+  // What-If Simulator Action Triggers
+  const btnOpenSimPayment = document.getElementById('btn-open-sim-payment');
+  if (btnOpenSimPayment) {
+    btnOpenSimPayment.addEventListener('click', () => openSimulatePaymentModal());
+  }
+
+  const btnOpenSimExpense = document.getElementById('btn-open-sim-expense');
+  if (btnOpenSimExpense) {
+    btnOpenSimExpense.addEventListener('click', () => openSimulateExpenseModal());
+  }
+
+  const btnOpenSimEditAmount = document.getElementById('btn-open-sim-edit-amount');
+  if (btnOpenSimEditAmount) {
+    btnOpenSimEditAmount.addEventListener('click', () => openSimulateEditAmountModal());
+  }
+
+  const btnOpenSimRemoveExpense = document.getElementById('btn-open-sim-remove-expense');
+  if (btnOpenSimRemoveExpense) {
+    btnOpenSimRemoveExpense.addEventListener('click', () => openSimulateRemoveExpenseModal());
+  }
+
+  const btnResetSim = document.getElementById('btn-reset-simulation');
+  if (btnResetSim) {
+    btnResetSim.addEventListener('click', () => {
+      simulationState = expense.resetSimulationState(appState);
+      ui.renderSimulatorTab(appState, simulationState);
+      ui.showToast('Simulation reset to current group state', 'info');
+    });
+  }
+
+  const btnOpenApplySim = document.getElementById('btn-open-apply-simulation');
+  if (btnOpenApplySim) {
+    btnOpenApplySim.addEventListener('click', () => {
+      if (!simulationState || !simulationState.changes || simulationState.changes.length === 0) {
+        ui.showToast('No hypothetical changes to apply.', 'info');
+        return;
+      }
+      ui.openModal('modal-confirm-apply-simulation');
+    });
+  }
+
+  const btnConfirmApplySim = document.getElementById('btn-confirm-apply-simulation');
+  if (btnConfirmApplySim) {
+    btnConfirmApplySim.addEventListener('click', () => {
+      if (simulationState) {
+        const res = expense.applySimulationToAppState(appState, simulationState);
+        simulationState = expense.initSimulationState(appState);
+        ui.closeModal('modal-confirm-apply-simulation');
+        renderFullDashboard();
+        ui.showToast(`Applied ${res.appliedCount} simulated change(s) to your group!`, 'success');
+      }
+    });
+  }
 
   // Receipt File Attachment & Preview Triggers
   const btnTriggerUpload = document.getElementById('btn-trigger-upload-receipt');
@@ -579,6 +654,57 @@ function bindEventListeners() {
     formRecurring.addEventListener('submit', (e) => {
       e.preventDefault();
       handleRecurringExpenseFormSubmit();
+    });
+  }
+
+  // Simulation Form Submits
+  const formSimPayment = document.getElementById('form-sim-payment');
+  if (formSimPayment) {
+    formSimPayment.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleSimPaymentSubmit();
+    });
+  }
+
+  const formSimExpense = document.getElementById('form-sim-expense');
+  if (formSimExpense) {
+    formSimExpense.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleSimExpenseSubmit();
+    });
+  }
+
+  const formSimEditAmount = document.getElementById('form-sim-edit-amount');
+  if (formSimEditAmount) {
+    formSimEditAmount.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleSimEditAmountSubmit();
+    });
+  }
+
+  const formSimRemoveExpense = document.getElementById('form-sim-remove-expense');
+  if (formSimRemoveExpense) {
+    formSimRemoveExpense.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleSimRemoveExpenseSubmit();
+    });
+  }
+
+  // Split Type toggle buttons inside Simulate Expense Modal
+  const btnSimSplitEqual = document.getElementById('btn-sim-split-equal');
+  const btnSimSplitCustom = document.getElementById('btn-sim-split-custom');
+  if (btnSimSplitEqual && btnSimSplitCustom) {
+    btnSimSplitEqual.addEventListener('click', () => {
+      btnSimSplitEqual.classList.add('active');
+      btnSimSplitCustom.classList.remove('active');
+      document.getElementById('sim-custom-shares-container').classList.add('hidden');
+    });
+
+    btnSimSplitCustom.addEventListener('click', () => {
+      btnSimSplitCustom.classList.add('active');
+      btnSimSplitEqual.classList.remove('active');
+      document.getElementById('sim-custom-shares-container').classList.remove('hidden');
+      renderSimCustomSharesInputs();
     });
   }
 
@@ -1252,4 +1378,230 @@ function handleRecurringExpenseFormSubmit() {
   ui.closeModal('modal-recurring-expense');
   renderFullDashboard();
   ui.showToast(`Recurring expense ${wasEditing ? 'updated' : 'added'} successfully`, 'success');
+}
+
+/**
+ * What-If Settlement Simulator Modal Handlers
+ */
+function openSimulatePaymentModal() {
+  if (!simulationState) simulationState = expense.initSimulationState(appState);
+
+  const selectFrom = document.getElementById('select-sim-payment-from');
+  const selectTo = document.getElementById('select-sim-payment-to');
+  const inputAmount = document.getElementById('input-sim-payment-amount');
+
+  if (!selectFrom || !selectTo) return;
+
+  const members = simulationState.members || [];
+  if (members.length < 2) {
+    ui.showToast('At least 2 members are required to simulate a payment.', 'warning');
+    return;
+  }
+
+  selectFrom.innerHTML = members.map(m => `<option value="${m.id}">${ui.escapeHtml(m.name)}</option>`).join('');
+  selectTo.innerHTML = members.map(m => `<option value="${m.id}">${ui.escapeHtml(m.name)}</option>`).join('');
+  
+  if (members.length >= 2) {
+    selectTo.value = members[1].id;
+  }
+
+  if (inputAmount) inputAmount.value = '';
+
+  ui.openModal('modal-sim-payment');
+}
+
+function handleSimPaymentSubmit() {
+  const fromId = document.getElementById('select-sim-payment-from').value;
+  const toId = document.getElementById('select-sim-payment-to').value;
+  const amount = document.getElementById('input-sim-payment-amount').value;
+
+  const res = expense.simulatePayment(simulationState, fromId, toId, amount);
+  if (!res.success) {
+    ui.showToast(res.error, 'danger');
+    return;
+  }
+
+  ui.closeModal('modal-sim-payment');
+  ui.renderSimulatorTab(appState, simulationState);
+  ui.showToast('Simulated payment added', 'info');
+}
+
+function openSimulateExpenseModal() {
+  if (!simulationState) simulationState = expense.initSimulationState(appState);
+
+  const inputTitle = document.getElementById('input-sim-expense-title');
+  const inputAmount = document.getElementById('input-sim-expense-amount');
+  const selectPaidBy = document.getElementById('select-sim-expense-paid-by');
+  const selectCategory = document.getElementById('select-sim-expense-category');
+  const participantsContainer = document.getElementById('sim-participants-checkboxes');
+  const btnEqual = document.getElementById('btn-sim-split-equal');
+  const btnCustom = document.getElementById('btn-sim-split-custom');
+  const customContainer = document.getElementById('sim-custom-shares-container');
+
+  if (!selectPaidBy || !participantsContainer) return;
+
+  if (inputTitle) inputTitle.value = '';
+  if (inputAmount) inputAmount.value = '';
+  if (selectCategory) selectCategory.value = 'Food';
+
+  selectPaidBy.innerHTML = simulationState.members.map(m => `
+    <option value="${m.id}">${ui.escapeHtml(m.name)}</option>
+  `).join('');
+
+  participantsContainer.innerHTML = simulationState.members.map(m => `
+    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+      <input type="checkbox" class="chk-sim-participant" value="${m.id}" checked>
+      <span>${ui.escapeHtml(m.name)}</span>
+    </label>
+  `).join('');
+
+  if (btnEqual && btnCustom && customContainer) {
+    btnEqual.classList.add('active');
+    btnCustom.classList.remove('active');
+    customContainer.classList.add('hidden');
+  }
+
+  ui.openModal('modal-sim-expense');
+}
+
+function renderSimCustomSharesInputs() {
+  const container = document.getElementById('sim-custom-shares-inputs-list');
+  if (!container) return;
+
+  const checkedCheckboxes = Array.from(document.querySelectorAll('.chk-sim-participant:checked'));
+  const checkedIds = checkedCheckboxes.map(c => c.value);
+
+  const memberMap = {};
+  (simulationState ? simulationState.members : appState.members).forEach(m => { memberMap[m.id] = m.name; });
+
+  container.innerHTML = checkedIds.map(id => `
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+      <span style="font-size: 0.9rem; font-weight: 500;">${ui.escapeHtml(memberMap[id] || id)}</span>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <span>₹</span>
+        <input type="number" step="0.01" min="0" class="form-control input-sim-custom-share" data-id="${id}" value="" style="width: 100px; text-align: right;">
+      </div>
+    </div>
+  `).join('');
+}
+
+function handleSimExpenseSubmit() {
+  const title = document.getElementById('input-sim-expense-title').value;
+  const amount = document.getElementById('input-sim-expense-amount').value;
+  const paidBy = document.getElementById('select-sim-expense-paid-by').value;
+  const category = document.getElementById('select-sim-expense-category').value;
+  const btnCustom = document.getElementById('btn-sim-split-custom');
+  const customContainer = document.getElementById('sim-custom-shares-container');
+
+  const checkedCheckboxes = Array.from(document.querySelectorAll('.chk-sim-participant:checked'));
+  const participants = checkedCheckboxes.map(c => c.value);
+
+  const splitType = btnCustom.classList.contains('active') ? 'custom' : 'equal';
+  const customShares = {};
+
+  if (splitType === 'custom' && customContainer) {
+    customContainer.querySelectorAll('.input-sim-custom-share').forEach(inp => {
+      const id = inp.getAttribute('data-id');
+      customShares[id] = parseFloat(inp.value) || 0;
+    });
+  }
+
+  const res = expense.simulateAddExpense(simulationState, {
+    title,
+    amount,
+    paidBy,
+    category,
+    splitType,
+    participants,
+    customShares
+  });
+
+  if (!res.success) {
+    ui.showToast(res.error, 'danger');
+    return;
+  }
+
+  ui.closeModal('modal-sim-expense');
+  ui.renderSimulatorTab(appState, simulationState);
+  ui.showToast('Simulated expense added', 'info');
+}
+
+function openSimulateEditAmountModal() {
+  if (!simulationState) simulationState = expense.initSimulationState(appState);
+
+  const selectExpense = document.getElementById('select-sim-edit-expense');
+  const inputAmount = document.getElementById('input-sim-edit-amount');
+
+  if (!selectExpense) return;
+
+  const expenses = simulationState.expenses || [];
+  if (expenses.length === 0) {
+    ui.showToast('No expenses available in simulation to modify.', 'warning');
+    return;
+  }
+
+  selectExpense.innerHTML = expenses.map(e => `
+    <option value="${e.id}">${ui.escapeHtml(e.title)} (Current: ₹${parseFloat(e.amount).toFixed(2)})</option>
+  `).join('');
+
+  if (inputAmount) {
+    inputAmount.value = expenses[0] ? parseFloat(expenses[0].amount).toFixed(2) : '';
+  }
+
+  selectExpense.onchange = () => {
+    const selected = expenses.find(e => e.id === selectExpense.value);
+    if (selected && inputAmount) {
+      inputAmount.value = parseFloat(selected.amount).toFixed(2);
+    }
+  };
+
+  ui.openModal('modal-sim-edit-amount');
+}
+
+function handleSimEditAmountSubmit() {
+  const expenseId = document.getElementById('select-sim-edit-expense').value;
+  const newAmount = document.getElementById('input-sim-edit-amount').value;
+
+  const res = expense.simulateEditExpenseAmount(simulationState, expenseId, newAmount);
+  if (!res.success) {
+    ui.showToast(res.error, 'danger');
+    return;
+  }
+
+  ui.closeModal('modal-sim-edit-amount');
+  ui.renderSimulatorTab(appState, simulationState);
+  ui.showToast('Simulated expense amount modified', 'info');
+}
+
+function openSimulateRemoveExpenseModal() {
+  if (!simulationState) simulationState = expense.initSimulationState(appState);
+
+  const selectExpense = document.getElementById('select-sim-remove-expense');
+  if (!selectExpense) return;
+
+  const expenses = simulationState.expenses || [];
+  if (expenses.length === 0) {
+    ui.showToast('No expenses available in simulation to remove.', 'warning');
+    return;
+  }
+
+  selectExpense.innerHTML = expenses.map(e => `
+    <option value="${e.id}">${ui.escapeHtml(e.title)} — ₹${parseFloat(e.amount).toFixed(2)}</option>
+  `).join('');
+
+  ui.openModal('modal-sim-remove-expense');
+}
+
+function handleSimRemoveExpenseSubmit() {
+  const expenseId = document.getElementById('select-sim-remove-expense').value;
+
+  const res = expense.simulateRemoveExpense(simulationState, expenseId);
+  if (!res.success) {
+    ui.showToast(res.error, 'danger');
+    return;
+  }
+
+  ui.closeModal('modal-sim-remove-expense');
+  ui.renderSimulatorTab(appState, simulationState);
+  ui.showToast('Simulated expense removal added', 'info');
 }

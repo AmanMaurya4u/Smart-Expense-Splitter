@@ -136,6 +136,15 @@ body {
   border-color: var(--color-input-focus);
 }
 
+.btn-icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+  background: var(--color-bg-subtle);
+  border-color: var(--color-surface-border);
+  color: var(--color-text-subtle);
+}
+
 .btn-icon svg {
   width: 18px;
   height: 18px;

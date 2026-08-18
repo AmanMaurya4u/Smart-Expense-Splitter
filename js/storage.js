@@ -160,6 +160,36 @@ function clearAllData() {
 }
 
 /**
+ * Escapes a cell value safely for CSV export (RFC 4180 compliant).
+ * Encloses values containing quotes, commas, or newlines in double quotes and doubles internal quotes.
+ * @param {any} val 
+ * @returns {string} Escaped cell string
+ */
+function escapeCSVCell(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+/**
+ * Generates a sanitized CSV filename based on group name and date.
+ * @param {string} [groupName] 
+ * @param {string} [dateStr] 
+ * @returns {string} Filename string (e.g. Goa-Trip-2026-expenses-2026-08-18.csv)
+ */
+function generateCSVFilename(groupName, dateStr) {
+  const safeName = (groupName || 'Group')
+    .trim()
+    .replace(/[^a-zA-Z0-9_\-\u0900-\u097F]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const date = dateStr || new Date().toISOString().split('T')[0];
+  return `${safeName || 'Group'}-expenses-${date}.csv`;
+}
+
+/**
  * Converts expenses and member mappings into a formatted CSV string.
  * @param {Array<Object>} expenses 
  * @param {Array<Object>} members 
@@ -167,34 +197,36 @@ function clearAllData() {
  */
 function exportToCSV(expenses, members) {
   const memberMap = {};
-  members.forEach(m => {
+  (members || []).forEach(m => {
     memberMap[m.id] = m.name;
   });
 
-  const headers = ['ID', 'Date', 'Title', 'Category', 'Amount (INR)', 'Paid By', 'Split Type', 'Participants', 'Created At'];
-  const rows = [headers];
+  const headers = ['Date', 'Expense Title', 'Amount', 'Paid By', 'Category', 'Split Type', 'Participants', 'Has Receipt'];
+  const rows = [headers.map(escapeCSVCell).join(',')];
 
-  expenses.forEach(exp => {
+  (expenses || []).forEach(exp => {
     const paidByName = memberMap[exp.paidBy] || exp.paidBy || 'Unknown';
     const participantNames = (exp.participants || [])
       .map(id => memberMap[id] || id)
       .join('; ');
+    const hasReceipt = (exp.receipt && exp.receipt.data) ? 'Yes' : 'No';
+    const splitTypeLabel = (exp.splitType || 'equal').toLowerCase() === 'custom' ? 'Custom' : 'Equal';
 
-    const row = [
-      exp.id,
+    const rowCells = [
       exp.date || '',
-      `"${(exp.title || '').replace(/"/g, '""')}"`,
+      exp.title || '',
+      typeof exp.amount === 'number' ? exp.amount : parseFloat(exp.amount) || 0,
+      paidByName,
       exp.category || 'Other',
-      exp.amount,
-      `"${paidByName.replace(/"/g, '""')}"`,
-      exp.splitType || 'equal',
-      `"${participantNames.replace(/"/g, '""')}"`,
-      exp.createdAt || ''
+      splitTypeLabel,
+      participantNames,
+      hasReceipt
     ];
-    rows.push(row);
+
+    rows.push(rowCells.map(escapeCSVCell).join(','));
   });
 
-  return rows.map(r => r.join(',')).join('\n');
+  return rows.join('\r\n');
 }
 
 // Universal module export support
@@ -207,6 +239,9 @@ if (typeof module !== 'undefined' && module.exports) {
     saveData,
     migrateData,
     clearAllData,
+    escapeCSVCell,
+    generateCSVFilename,
     exportToCSV
   };
 }
+

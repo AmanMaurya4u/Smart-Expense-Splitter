@@ -903,28 +903,206 @@ function bindEventListeners() {
     });
   }
 
-  // Export CSV
-  const btnExportCSV = document.getElementById('btn-export-csv');
-  if (btnExportCSV) {
-    btnExportCSV.addEventListener('click', () => {
-      const csvStr = storage.exportToCSV(appState.expenses, appState.members);
+  // Helper to determine active export scope (All vs Filtered)
+  function getSelectedExpensesForExport() {
+    const checkedRadio = document.querySelector('input[name="export-scope"]:checked');
+    const isFilteredScope = checkedRadio && checkedRadio.value === 'FILTERED';
+    let expensesToExport = appState.expenses || [];
+    let scopeLabel = 'All Expenses';
+
+    if (isFilteredScope) {
+      const res = calcLogic.filterAndSortExpenses
+        ? calcLogic.filterAndSortExpenses(appState.expenses || [], appState.members || [], currentFilterState)
+        : { filtered: appState.expenses || [] };
+      expensesToExport = res.filtered || [];
+      scopeLabel = 'Filtered Expenses';
+    }
+
+    return { expensesToExport, isFilteredScope, scopeLabel };
+  }
+
+  // Open Export / Report Modal Triggers
+  const openExportModalHandler = () => {
+    ui.renderExportReportModal(appState, currentFilterState);
+    ui.openModal('modal-export-report');
+  };
+
+  const btnOpenExport = document.getElementById('btn-open-export-report');
+  if (btnOpenExport) {
+    btnOpenExport.addEventListener('click', openExportModalHandler);
+  }
+
+  const btnExportCSVHeader = document.getElementById('btn-export-csv');
+  if (btnExportCSVHeader) {
+    btnExportCSVHeader.addEventListener('click', openExportModalHandler);
+  }
+
+  const btnPrintHeader = document.getElementById('btn-print-summary');
+  if (btnPrintHeader) {
+    btnPrintHeader.addEventListener('click', openExportModalHandler);
+  }
+
+  // Modal Action 1: Download CSV
+  const btnDoExportCSV = document.getElementById('btn-do-export-csv');
+  if (btnDoExportCSV) {
+    btnDoExportCSV.addEventListener('click', () => {
+      const { expensesToExport, scopeLabel } = getSelectedExpensesForExport();
+
+      if (expensesToExport.length === 0) {
+        ui.showToast('No expenses available to export.', 'info');
+        return;
+      }
+
+      const csvStr = storage.exportToCSV(expensesToExport, appState.members);
+      const groupName = appState.group ? appState.group.name : 'Group';
+      const fileName = storage.generateCSVFilename
+        ? storage.generateCSVFilename(groupName, new Date().toISOString().split('T')[0])
+        : `expenses_${Date.now()}.csv`;
+
       const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
-      link.setAttribute('download', `expense_summary_${Date.now()}.csv`);
+      link.setAttribute('download', fileName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      ui.showToast('Exported CSV file', 'success');
+
+      // Log optional activity record
+      if (expense.logActivity) {
+        expense.logActivity(appState, {
+          type: 'report_exported',
+          category: 'all',
+          message: `Expense report exported as CSV (${scopeLabel})`
+        });
+        storage.saveData(appState);
+      }
+
+      ui.showToast(`Exported ${expensesToExport.length} expense(s) to ${fileName}`, 'success');
+      ui.closeModal('modal-export-report');
     });
   }
 
-  // Print Summary
-  const btnPrint = document.getElementById('btn-print-summary');
-  if (btnPrint) {
-    btnPrint.addEventListener('click', () => {
+  // Modal Action 2: Print Report
+  const btnDoPrintReport = document.getElementById('btn-do-print-report');
+  if (btnDoPrintReport) {
+    btnDoPrintReport.addEventListener('click', () => {
+      const { expensesToExport, scopeLabel } = getSelectedExpensesForExport();
+      ui.renderPrintReport(appState, expensesToExport, scopeLabel);
+      ui.closeModal('modal-export-report');
       window.print();
+    });
+  }
+
+  // Modal Action 3: Copy Expense Summary
+  const btnDoCopyExpenseSummary = document.getElementById('btn-do-copy-expense-summary');
+  if (btnDoCopyExpenseSummary) {
+    btnDoCopyExpenseSummary.addEventListener('click', () => {
+      const { expensesToExport } = getSelectedExpensesForExport();
+
+      if (expensesToExport.length === 0) {
+        ui.showToast('No expenses available to export.', 'info');
+        return;
+      }
+
+      const summaryText = calcLogic.generateExpenseSummaryText
+        ? calcLogic.generateExpenseSummaryText(appState.group, expensesToExport, appState.members)
+        : '';
+
+      if (!summaryText) {
+        ui.showToast('Unable to copy summary. Please try again.', 'danger');
+        return;
+      }
+
+      ui.copyToClipboard(summaryText).then(success => {
+        if (success) {
+          if (expense.logActivity) {
+            expense.logActivity(appState, {
+              type: 'report_exported',
+              category: 'all',
+              message: 'Expense summary copied to clipboard'
+            });
+            storage.saveData(appState);
+          }
+          ui.showToast('Summary copied to clipboard.', 'success');
+        } else {
+          ui.showToast('Unable to copy summary. Please try again.', 'danger');
+        }
+      }).catch(() => {
+        ui.showToast('Unable to copy summary. Please try again.', 'danger');
+      });
+
+      ui.closeModal('modal-export-report');
+    });
+  }
+
+  // Modal Action 4: Copy Settlement Summary
+  const btnDoCopySettlementSummary = document.getElementById('btn-do-copy-settlement-summary');
+  if (btnDoCopySettlementSummary) {
+    btnDoCopySettlementSummary.addEventListener('click', () => {
+      const { expensesToExport } = getSelectedExpensesForExport();
+      const settlementText = calcLogic.generateSettlementSummaryText
+        ? calcLogic.generateSettlementSummaryText(appState.group, appState.members, expensesToExport, appState.settlements)
+        : '';
+
+      if (!settlementText) {
+        ui.showToast('Unable to copy settlement summary. Please try again.', 'danger');
+        return;
+      }
+
+      ui.copyToClipboard(settlementText).then(success => {
+        if (success) {
+          ui.showToast('Settlement summary copied.', 'success');
+        } else {
+          ui.showToast('Unable to copy settlement summary. Please try again.', 'danger');
+        }
+      }).catch(() => {
+        ui.showToast('Unable to copy settlement summary. Please try again.', 'danger');
+      });
+
+      ui.closeModal('modal-export-report');
+    });
+  }
+
+  // Modal Action 5: Native Web Share API
+  const btnDoShareSettlement = document.getElementById('btn-do-share-settlement');
+  if (btnDoShareSettlement) {
+    btnDoShareSettlement.addEventListener('click', () => {
+      const { expensesToExport } = getSelectedExpensesForExport();
+      const groupTitle = (appState.group && appState.group.name) ? appState.group.name : 'Group';
+      const settlementText = calcLogic.generateSettlementSummaryText
+        ? calcLogic.generateSettlementSummaryText(appState.group, appState.members, expensesToExport, appState.settlements)
+        : '';
+
+      if (!settlementText) {
+        ui.showToast('Unable to prepare settlement summary.', 'danger');
+        return;
+      }
+
+      if (navigator.share) {
+        navigator.share({
+          title: `${groupTitle} - Settlement`,
+          text: settlementText
+        }).then(() => {
+          ui.showToast('Settlement shared successfully.', 'success');
+        }).catch(err => {
+          if (err && err.name !== 'AbortError') {
+            ui.showToast('Unable to share. Summary copied instead.', 'info');
+            ui.copyToClipboard(settlementText);
+          }
+        });
+      } else {
+        // Fallback to Copy Summary
+        ui.copyToClipboard(settlementText).then(success => {
+          if (success) {
+            ui.showToast('Settlement summary copied (Web Share API unavailable).', 'info');
+          } else {
+            ui.showToast('Unable to share or copy summary. Please try again.', 'danger');
+          }
+        });
+      }
+
+      ui.closeModal('modal-export-report');
     });
   }
 

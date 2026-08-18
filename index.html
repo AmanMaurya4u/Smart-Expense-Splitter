@@ -176,10 +176,16 @@
           <button class="tab-btn" data-tab="simulator">What-If Simulator</button>
         </nav>
 
-        <button id="btn-open-add-expense" class="btn btn-primary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 18px; height: 18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Expense
-        </button>
+        <div style="display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+          <button id="btn-open-export-report" class="btn btn-secondary" title="Export CSV, Print, or Copy Summary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Export / Report
+          </button>
+          <button id="btn-open-add-expense" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 18px; height: 18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Expense
+          </button>
+        </div>
       </div>
 
       <!-- Tab Content 1: Expenses -->
@@ -1264,6 +1270,86 @@
     </div>
   </div>
 
+  <!-- Modal: Export & Report Center -->
+  <div id="modal-export-report" class="modal-overlay" aria-hidden="true">
+    <div class="modal-dialog" style="max-width: 540px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Export & Share Report</h3>
+        <button class="btn-icon btn-close-modal">✕</button>
+      </div>
+
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: var(--space-4);">
+        <!-- Active Filter Scope Selection (Shown when search/filters active) -->
+        <div id="export-scope-container" class="card hidden" style="background: var(--color-bg-subtle); padding: 12px; border-left: 4px solid var(--color-primary);">
+          <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: var(--color-primary-dark);">Active Search/Filters Detected</div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--color-text-main);">
+              <input type="radio" name="export-scope" value="ALL" checked>
+              <span>Export All Expenses (<strong id="export-count-all">0</strong>)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--color-text-main);">
+              <input type="radio" name="export-scope" value="FILTERED">
+              <span>Export Filtered Expenses (<strong id="export-count-filtered">0</strong>)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Export Actions Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+          <!-- 1. Download CSV -->
+          <button id="btn-do-export-csv" type="button" class="export-action-card">
+            <div class="export-icon" style="background: rgba(34, 197, 94, 0.15); color: #16a34a;">📊</div>
+            <div style="text-align: left;">
+              <div style="font-weight: 600; font-size: 0.95rem; color: var(--color-text-main);">Download CSV</div>
+              <div style="font-size: 0.75rem; color: var(--color-text-muted);">Spreadsheet raw expense data</div>
+            </div>
+          </button>
+
+          <!-- 2. Print Report -->
+          <button id="btn-do-print-report" type="button" class="export-action-card">
+            <div class="export-icon" style="background: rgba(59, 130, 246, 0.15); color: #2563eb;">🖨️</div>
+            <div style="text-align: left;">
+              <div style="font-weight: 600; font-size: 0.95rem; color: var(--color-text-main);">Print Report</div>
+              <div style="font-size: 0.75rem; color: var(--color-text-muted);">Print-friendly full PDF/paper summary</div>
+            </div>
+          </button>
+
+          <!-- 3. Copy Expense Summary -->
+          <button id="btn-do-copy-expense-summary" type="button" class="export-action-card">
+            <div class="export-icon" style="background: rgba(168, 85, 247, 0.15); color: #9333ea;">📋</div>
+            <div style="text-align: left;">
+              <div style="font-weight: 600; font-size: 0.95rem; color: var(--color-text-main);">Copy Summary</div>
+              <div style="font-size: 0.75rem; color: var(--color-text-muted);">Plain text expense list to clipboard</div>
+            </div>
+          </button>
+
+          <!-- 4. Copy Settlement Summary -->
+          <button id="btn-do-copy-settlement-summary" type="button" class="export-action-card">
+            <div class="export-icon" style="background: rgba(245, 158, 11, 0.15); color: #d97706;">💬</div>
+            <div style="text-align: left;">
+              <div style="font-weight: 600; font-size: 0.95rem; color: var(--color-text-main);">Copy Settlement</div>
+              <div style="font-size: 0.75rem; color: var(--color-text-muted);">Plain text debt settlement breakdown</div>
+            </div>
+          </button>
+        </div>
+
+        <!-- 5. Native Share API Option -->
+        <button id="btn-do-share-settlement" type="button" class="btn btn-secondary" style="width: 100%; justify-content: center; gap: 8px;">
+          📲 Share Settlement via App
+        </button>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-close-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Printable Expense Report Layout (Hidden during screen view, rendered during @media print) -->
+  <div id="print-report-container">
+    <!-- Rendered dynamically by ui.renderPrintReport() -->
+  </div>
+
   <!-- Core JavaScript Libraries -->
   <script src="js/calculation.js"></script>
   <script src="js/storage.js"></script>
@@ -1272,3 +1358,4 @@
   <script src="js/app.js"></script>
 </body>
 </html>
+

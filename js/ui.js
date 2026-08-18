@@ -1401,6 +1401,369 @@ function renderTemplatesList(appState) {
   }).join('');
 }
 
+/**
+ * Safely copies text to the system clipboard with async fallback.
+ * 
+ * @param {string} text 
+ * @returns {Promise<boolean>} Success status
+ */
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-999999px';
+      textarea.style.top = '-999999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return successful;
+    }
+  } catch (err) {
+    console.error('Clipboard copy failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Updates Export & Report Modal scope counts and button states based on filter state
+ * 
+ * @param {Object} appState 
+ * @param {Object} [filterState] 
+ */
+function renderExportReportModal(appState, filterState = {}) {
+  const scopeContainer = document.getElementById('export-scope-container');
+  const countAllEl = document.getElementById('export-count-all');
+  const countFilteredEl = document.getElementById('export-count-filtered');
+  const btnShare = document.getElementById('btn-do-share-settlement');
+
+  const rawExpenses = appState.expenses || [];
+  const members = appState.members || [];
+
+  const isFiltered = isAnyFilterActive(filterState);
+  let filteredCount = rawExpenses.length;
+
+  if (isFiltered) {
+    const filterResult = calc.filterAndSortExpenses
+      ? calc.filterAndSortExpenses(rawExpenses, members, filterState)
+      : { filteredCount: rawExpenses.length };
+    filteredCount = filterResult.filteredCount;
+  }
+
+  if (countAllEl) countAllEl.textContent = rawExpenses.length;
+  if (countFilteredEl) countFilteredEl.textContent = filteredCount;
+
+  if (scopeContainer) {
+    if (isFiltered && rawExpenses.length > 0) {
+      scopeContainer.classList.remove('hidden');
+    } else {
+      scopeContainer.classList.add('hidden');
+    }
+  }
+
+  if (btnShare) {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      btnShare.innerHTML = '📲 Share Settlement Summary';
+    } else {
+      btnShare.innerHTML = '📲 Share Settlement (Copy Fallback)';
+    }
+  }
+}
+
+/**
+ * Renders print-ready HTML structure into #print-report-container
+ * 
+ * @param {Object} appState 
+ * @param {Array<Object>} [expensesToReport] 
+ * @param {string} [scopeLabel] 
+ */
+function renderPrintReport(appState, expensesToReport, scopeLabel = 'All Expenses') {
+  const container = document.getElementById('print-report-container');
+  if (!container) return;
+
+  const report = calc.compileReportData ? calc.compileReportData(appState, expensesToReport, scopeLabel) : null;
+  if (!report) return;
+
+  const budgetStats = report.budgetStats || {};
+  const analytics = report.analytics || {};
+
+  let budgetHtml = '<p style="font-size: 9pt; color: #64748b;">No budget configured.</p>';
+  if (budgetStats.hasBudget) {
+    const statusClass = budgetStats.isExceeded ? 'print-badge-danger' : (budgetStats.isWarning ? 'print-badge-warning' : 'print-badge-success');
+    const statusMsg = budgetStats.isExceeded
+      ? `Exceeded by ₹${budgetStats.exceededAmount.toFixed(2)}`
+      : `${budgetStats.percentage}% Used`;
+
+    budgetHtml = `
+      <div class="print-grid">
+        <div class="print-stat-card">
+          <div class="print-stat-label">Budget Limit</div>
+          <div class="print-stat-value">₹${budgetStats.totalBudget.toFixed(2)}</div>
+        </div>
+        <div class="print-stat-card">
+          <div class="print-stat-label">Spent</div>
+          <div class="print-stat-value">₹${budgetStats.totalSpent.toFixed(2)}</div>
+        </div>
+        <div class="print-stat-card">
+          <div class="print-stat-label">Remaining</div>
+          <div class="print-stat-value" style="color: ${budgetStats.remaining > 0 ? '#16a34a' : '#dc2626'};">
+            ₹${budgetStats.remaining.toFixed(2)}
+          </div>
+        </div>
+        <div class="print-stat-card">
+          <div class="print-stat-label">Status</div>
+          <div class="print-stat-value"><span class="print-badge ${statusClass}">${statusMsg}</span></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Members Table
+  const membersRows = report.members.map(m => {
+    const balFormatted = m.balance > 0
+      ? `+₹${m.balance.toFixed(2)}`
+      : (m.balance < 0 ? `-₹${Math.abs(m.balance).toFixed(2)}` : '₹0.00');
+
+    let badgeClass = 'print-badge-success';
+    if (m.balance < 0) badgeClass = 'print-badge-danger';
+    else if (m.balance === 0) badgeClass = 'print-badge-warning';
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(m.name)}</strong></td>
+        <td>₹${m.paid.toFixed(2)}</td>
+        <td>₹${m.share.toFixed(2)}</td>
+        <td><strong>${balFormatted}</strong></td>
+        <td><span class="print-badge ${badgeClass}">${escapeHtml(m.statusText)}</span></td>
+      </tr>
+    `;
+  }).join('');
+
+  // Expenses Table
+  const expensesRows = report.expenses.map(exp => `
+    <tr>
+      <td>${escapeHtml(exp.date)}</td>
+      <td><strong>${escapeHtml(exp.title)}</strong></td>
+      <td>₹${exp.amount.toFixed(2)}</td>
+      <td>${escapeHtml(exp.paidByName)}</td>
+      <td>${escapeHtml(exp.category)}</td>
+      <td>${escapeHtml(exp.splitType)}</td>
+      <td>${escapeHtml(exp.participantNames)}</td>
+      <td>${exp.hasReceipt ? '<span class="print-badge print-badge-success">📎 Receipt Attached</span>' : 'No'}</td>
+    </tr>
+  `).join('');
+
+  // Settlements Table
+  const settlementsRows = report.settlements.map(s => {
+    let badgeClass = 'print-badge-warning';
+    if (s.status === 'paid') badgeClass = 'print-badge-success';
+    else if (s.status === 'partially_paid') badgeClass = 'print-badge-warning';
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(s.fromName)}</strong></td>
+        <td><strong>${escapeHtml(s.toName)}</strong></td>
+        <td>₹${s.totalDue.toFixed(2)}</td>
+        <td>₹${s.paid.toFixed(2)}</td>
+        <td><strong>₹${s.remaining.toFixed(2)}</strong></td>
+        <td><span class="print-badge ${badgeClass}">${escapeHtml(s.statusLabel)}</span></td>
+      </tr>
+    `;
+  }).join('');
+
+  // Payment History Table
+  let paymentHistoryHtml = '';
+  if (report.paymentHistory && report.paymentHistory.length > 0) {
+    const payRows = report.paymentHistory.map(p => `
+      <tr>
+        <td>${escapeHtml(p.date)}</td>
+        <td>${escapeHtml(p.fromName)}</td>
+        <td>${escapeHtml(p.toName)}</td>
+        <td><strong>₹${p.amount.toFixed(2)}</strong></td>
+        <td>${escapeHtml(p.paymentMethod)}</td>
+        <td>${escapeHtml(p.note || '-')}</td>
+      </tr>
+    `).join('');
+
+    paymentHistoryHtml = `
+      <div class="print-section">
+        <div class="print-section-title">Settlement Payment History (${report.paymentHistory.length})</div>
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Payer</th>
+              <th>Receiver</th>
+              <th>Amount</th>
+              <th>Payment Method</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${payRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // Analytics Box
+  let analyticsHtml = '';
+  if (analytics.highestExpense || analytics.highestCategory || analytics.highestPayer) {
+    const topExpText = analytics.highestExpense ? `${analytics.highestExpense.title} (₹${parseFloat(analytics.highestExpense.amount).toFixed(2)})` : '-';
+    const topCatText = analytics.highestCategory ? `${analytics.highestCategory.category} (${analytics.highestCategory.percentage}%)` : '-';
+    const topPayerText = analytics.highestPayer ? `${analytics.highestPayer.name} (₹${analytics.highestPayer.totalPaid.toFixed(2)})` : '-';
+    const avgText = analytics.averageExpense ? `₹${analytics.averageExpense.toFixed(2)}` : '₹0.00';
+
+    analyticsHtml = `
+      <div class="print-section">
+        <div class="print-section-title">Spending Analytics & Insights</div>
+        <div class="print-grid">
+          <div class="print-stat-card">
+            <div class="print-stat-label">Highest Expense</div>
+            <div class="print-stat-value" style="font-size: 10.5pt;">${escapeHtml(topExpText)}</div>
+          </div>
+          <div class="print-stat-card">
+            <div class="print-stat-label">Highest Category</div>
+            <div class="print-stat-value" style="font-size: 10.5pt;">${escapeHtml(topCatText)}</div>
+          </div>
+          <div class="print-stat-card">
+            <div class="print-stat-label">Highest Payer</div>
+            <div class="print-stat-value" style="font-size: 10.5pt;">${escapeHtml(topPayerText)}</div>
+          </div>
+          <div class="print-stat-card">
+            <div class="print-stat-label">Average Expense</div>
+            <div class="print-stat-value" style="font-size: 10.5pt;">${escapeHtml(avgText)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = `
+    <div class="print-header">
+      <div>
+        <h1>SMART EXPENSE SPLITTER</h1>
+        <div class="print-header-sub">Group Financial Summary: <strong>${escapeHtml(report.groupName)}</strong></div>
+      </div>
+      <div class="print-header-meta">
+        <div><strong>Report Scope:</strong> ${escapeHtml(report.scopeLabel)}</div>
+        <div><strong>Date:</strong> ${escapeHtml(report.reportDate)}</div>
+      </div>
+    </div>
+
+    <!-- Summary Grid -->
+    <div class="print-section">
+      <div class="print-section-title">Overview Summary</div>
+      <div class="print-grid">
+        <div class="print-stat-card">
+          <div class="print-stat-label">Total Expenses</div>
+          <div class="print-stat-value">₹${report.totalExpenses.toFixed(2)}</div>
+        </div>
+        <div class="print-stat-card">
+          <div class="print-stat-label">Expense Records</div>
+          <div class="print-stat-value">${report.expenseCount}</div>
+        </div>
+        <div class="print-stat-card">
+          <div class="print-stat-label">Members</div>
+          <div class="print-stat-value">${report.members.length}</div>
+        </div>
+        <div class="print-stat-card">
+          <div class="print-stat-label">Pending Settlements</div>
+          <div class="print-stat-value">₹${report.totalPendingAmount.toFixed(2)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Group Budget Section -->
+    <div class="print-section">
+      <div class="print-section-title">Group Budget</div>
+      ${budgetHtml}
+    </div>
+
+    <!-- Members Section -->
+    <div class="print-section">
+      <div class="print-section-title">Members Balances Summary (${report.members.length})</div>
+      <table class="print-table">
+        <thead>
+          <tr>
+            <th>Member Name</th>
+            <th>Paid Out of Pocket</th>
+            <th>Calculated Share</th>
+            <th>Net Balance</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${membersRows}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Expenses Section -->
+    <div class="print-section">
+      <div class="print-section-title">Expense Records (${report.expenses.length})</div>
+      ${report.expenses.length === 0 ? '<p style="font-size: 9pt; color: #64748b;">No expense records available.</p>' : `
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Expense</th>
+              <th>Amount</th>
+              <th>Paid By</th>
+              <th>Category</th>
+              <th>Split Type</th>
+              <th>Participants</th>
+              <th>Receipt</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${expensesRows}
+          </tbody>
+        </table>
+      `}
+    </div>
+
+    <!-- Settlements Section -->
+    <div class="print-section">
+      <div class="print-section-title">Settlement Debt Breakdown (${report.settlements.length})</div>
+      ${report.settlements.length === 0 ? '<p style="font-size: 9pt; color: #64748b;">Everyone is settled up 🎉</p>' : `
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th>Payer</th>
+              <th>Receiver</th>
+              <th>Total Due</th>
+              <th>Paid</th>
+              <th>Remaining</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${settlementsRows}
+          </tbody>
+        </table>
+      `}
+    </div>
+
+    <!-- Payment History Section -->
+    ${paymentHistoryHtml}
+
+    <!-- Analytics Section -->
+    ${analyticsHtml}
+
+    <div class="print-footer">
+      Generated automatically by Smart Expense Splitter presentation layer on ${escapeHtml(report.reportDate)}.
+    </div>
+  `;
+}
+
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -1424,8 +1787,12 @@ if (typeof module !== 'undefined' && module.exports) {
     openReceiptLightboxModal,
     renderSimulatorTab,
     renderTemplatesList,
+    copyToClipboard,
+    renderExportReportModal,
+    renderPrintReport,
     escapeHtml
   };
 }
+
 
 

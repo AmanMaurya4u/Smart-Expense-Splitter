@@ -830,22 +830,183 @@ body {
   }
 }
 
+/* Export & Report Modal Action Cards */
+.export-action-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.export-action-card:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.export-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
 /* ==========================================================================
    11. Print Stylesheet
    ========================================================================== */
+#print-report-container {
+  display: none;
+}
+
 @media print {
-  body {
+  body * {
+    visibility: hidden;
+  }
+  #print-report-container, #print-report-container * {
+    visibility: visible;
+  }
+  #print-report-container {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    padding: 24px;
     background: #ffffff !important;
-    color: #000000 !important;
+    color: #0f172a !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
-  .app-header, .header-actions, .filter-bar, .btn, .modal-overlay, #toast-container {
-    display: none !important;
+
+  .print-header {
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
   }
-  .card, .stat-card, .table-responsive, .settlement-card {
-    border: 1px solid #cccccc !important;
-    box-shadow: none !important;
+
+  .print-header h1 {
+    font-size: 18pt;
+    font-weight: 800;
+    margin: 0;
+    color: #0f172a;
+    letter-spacing: -0.02em;
   }
-  .expense-table th {
-    background: #f0f0f0 !important;
+
+  .print-header-sub {
+    font-size: 11pt;
+    color: #475569;
+    margin-top: 4px;
+  }
+
+  .print-header-meta {
+    text-align: right;
+    font-size: 9pt;
+    color: #64748b;
+  }
+
+  .print-section {
+    margin-bottom: 22px;
+    page-break-inside: avoid;
+  }
+
+  .print-section-title {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #0f172a;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .print-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .print-stat-card {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: #f8fafc;
+  }
+
+  .print-stat-label {
+    font-size: 8pt;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .print-stat-value {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 2px;
+  }
+
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin-top: 6px;
+  }
+
+  .print-table th {
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 700;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+  }
+
+  .print-table td {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+  }
+
+  .print-table tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+
+  .print-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 8pt;
+    font-weight: 600;
+  }
+
+  .print-badge-success { background: #dcfce7; color: #15803d; }
+  .print-badge-warning { background: #fef3c7; color: #b45309; }
+  .print-badge-danger { background: #fee2e2; color: #b91c1c; }
+
+  .print-footer {
+    margin-top: 24px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 8pt;
+    color: #94a3b8;
+    text-align: center;
   }
 }
+

@@ -1105,6 +1105,265 @@ function filterAndSortExpenses(expenses, members, filterState) {
   };
 }
 
+/**
+ * Formats group expense summary into plain text for clipboard copying.
+ * 
+ * @param {Object} group - Group object
+ * @param {Array<Object>} expenses - Array of expense objects
+ * @param {Array<Object>} members - Array of member objects
+ * @returns {string} Plain text summary
+ */
+function generateExpenseSummaryText(group, expenses, members) {
+  const groupName = (group && group.name) ? group.name : 'Expense Summary';
+  const rawExpenses = Array.isArray(expenses) ? expenses : [];
+  const memberList = Array.isArray(members) ? members : [];
+
+  const memberMap = {};
+  memberList.forEach(m => { memberMap[m.id] = m.name; });
+
+  const totalSpent = calculateTotalSpending(rawExpenses);
+  const budgetStats = getBudgetStats(group, rawExpenses);
+
+  const lines = [groupName, ''];
+  lines.push(`Total Expenses: ${CURRENCY_SYMBOL}${totalSpent.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
+  if (budgetStats.hasBudget) {
+    lines.push(`Budget: ${CURRENCY_SYMBOL}${budgetStats.totalBudget.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    if (budgetStats.isExceeded) {
+      lines.push(`Exceeded: ${CURRENCY_SYMBOL}${budgetStats.exceededAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    } else {
+      lines.push(`Remaining: ${CURRENCY_SYMBOL}${budgetStats.remaining.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    }
+  }
+
+  lines.push('');
+  lines.push('Expenses:');
+
+  if (rawExpenses.length === 0) {
+    lines.push('- No expenses recorded.');
+  } else {
+    rawExpenses.forEach(exp => {
+      const payerName = memberMap[exp.paidBy] || exp.paidBy || 'Unknown';
+      const amt = (parseFloat(exp.amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      lines.push(`- ${exp.title || 'Expense'} — ${CURRENCY_SYMBOL}${amt} — ${payerName}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Formats settlement balances and pending transfers into plain text.
+ * 
+ * @param {Object} group 
+ * @param {Array<Object>} members 
+ * @param {Array<Object>} expenses 
+ * @param {Array<Object>} [existingSettlements] 
+ * @returns {string} Plain text settlement summary
+ */
+function generateSettlementSummaryText(group, members, expenses, existingSettlements) {
+  const groupName = (group && group.name) ? group.name : 'Group';
+  const memberList = Array.isArray(members) ? members : [];
+  const rawExpenses = Array.isArray(expenses) ? expenses : [];
+
+  const memberMap = {};
+  memberList.forEach(m => { memberMap[m.id] = m.name; });
+
+  const balancesMap = calculateBalances(memberList, rawExpenses);
+  const settlements = calculateSettlements(balancesMap);
+
+  // Map existing settlement payments to calculated settlements if available
+  const existingMap = {};
+  if (Array.isArray(existingSettlements)) {
+    existingSettlements.forEach(s => {
+      existingMap[`${s.from}_${s.to}`] = s;
+    });
+  }
+
+  const lines = [`${groupName} - Settlement`, ''];
+
+  let totalPendingCents = 0;
+  let activeDebtCount = 0;
+
+  settlements.forEach(s => {
+    const key = `${s.from}_${s.to}`;
+    const matched = existingMap[key];
+    const stats = getSettlementPaymentStats(matched || s);
+    const fromName = memberMap[s.from] || s.from || 'Member';
+    const toName = memberMap[s.to] || s.to || 'Member';
+
+    if (stats.remainingAmount > 0) {
+      activeDebtCount++;
+      const remAmtStr = stats.remainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      totalPendingCents += Math.round(stats.remainingAmount * 100);
+
+      if (stats.status === 'partially_paid') {
+        const paidStr = stats.totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const dueStr = stats.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        lines.push(`${fromName} owes ${toName} ${CURRENCY_SYMBOL}${remAmtStr} (Paid ${CURRENCY_SYMBOL}${paidStr} of ${CURRENCY_SYMBOL}${dueStr})`);
+      } else {
+        lines.push(`${fromName} owes ${toName} ${CURRENCY_SYMBOL}${remAmtStr}`);
+      }
+    }
+  });
+
+  if (activeDebtCount === 0) {
+    lines.push('Everyone is settled up 🎉 No pending payments.');
+  } else {
+    lines.push('');
+    const pendingTotalStr = (totalPendingCents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    lines.push(`Total Pending: ${CURRENCY_SYMBOL}${pendingTotalStr}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Compiles a structured printable report model from state and expense selection.
+ * 
+ * @param {Object} appState 
+ * @param {Array<Object>} [expensesOverride] 
+ * @param {string} [scopeLabel] 
+ * @returns {Object} Report Data Model
+ */
+function compileReportData(appState, expensesOverride, scopeLabel = 'All Expenses') {
+  const group = appState.group || { name: 'Smart Expense Splitter' };
+  const members = Array.isArray(appState.members) ? appState.members : [];
+  const expenses = Array.isArray(expensesOverride) ? expensesOverride : (appState.expenses || []);
+  const existingSettlements = Array.isArray(appState.settlements) ? appState.settlements : [];
+
+  const memberMap = {};
+  members.forEach(m => { memberMap[m.id] = m.name; });
+
+  const totalSpent = calculateTotalSpending(expenses);
+  const averageExpense = calculateAverageExpense(expenses);
+  const highestExpense = findHighestExpense(expenses);
+  const categoryData = calculateCategorySpending(expenses);
+  const memberSpending = calculateMemberSpending(members, expenses);
+  const budgetStats = getBudgetStats(group, expenses);
+
+  const balancesMap = calculateBalances(members, expenses);
+  const calculatedSettlements = calculateSettlements(balancesMap);
+
+  // Map settlement payment history and status
+  const existingMap = {};
+  existingSettlements.forEach(s => {
+    existingMap[`${s.from}_${s.to}`] = s;
+  });
+
+  let totalPendingCents = 0;
+  const settlementDetails = calculatedSettlements.map(s => {
+    const matched = existingMap[`${s.from}_${s.to}`];
+    const stats = getSettlementPaymentStats(matched || s);
+    totalPendingCents += Math.round(stats.remainingAmount * 100);
+
+    let statusLabel = 'Pending';
+    if (stats.status === 'paid') statusLabel = 'Fully Paid';
+    else if (stats.status === 'partially_paid') statusLabel = 'Partially Paid';
+
+    return {
+      id: s.id,
+      fromName: memberMap[s.from] || s.from || 'Member',
+      toName: memberMap[s.to] || s.to || 'Member',
+      totalDue: stats.totalDue,
+      paid: stats.totalPaid,
+      remaining: stats.remainingAmount,
+      status: stats.status,
+      statusLabel,
+      payments: stats.payments
+    };
+  });
+
+  // Extract payment history across all settlements
+  const paymentHistory = [];
+  existingSettlements.forEach(s => {
+    const fromName = memberMap[s.from] || s.from || 'Member';
+    const toName = memberMap[s.to] || s.to || 'Member';
+    if (Array.isArray(s.payments)) {
+      s.payments.forEach(p => {
+        paymentHistory.push({
+          id: p.id,
+          date: p.date || s.paidAt || '',
+          fromName,
+          toName,
+          amount: parseFloat(p.amount) || 0,
+          paymentMethod: p.paymentMethod || 'UPI',
+          note: p.note || ''
+        });
+      });
+    }
+  });
+
+  paymentHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Member balance list with status
+  const memberBalancesList = members.map(m => {
+    const balInfo = balancesMap[m.id] || { paid: 0, share: 0, balance: 0 };
+    let statusText = 'Settled';
+    if (balInfo.balance > 0) {
+      statusText = `Gets back ${CURRENCY_SYMBOL}${balInfo.balance.toFixed(2)}`;
+    } else if (balInfo.balance < 0) {
+      statusText = `Owes ${CURRENCY_SYMBOL}${Math.abs(balInfo.balance).toFixed(2)}`;
+    }
+
+    return {
+      id: m.id,
+      name: m.name,
+      paid: balInfo.paid,
+      share: balInfo.share,
+      balance: balInfo.balance,
+      statusText
+    };
+  });
+
+  // Expense row presentation model
+  const expenseRows = expenses.map(exp => {
+    const paidByName = memberMap[exp.paidBy] || exp.paidBy || 'Unknown';
+    const participantNames = (exp.participants || [])
+      .map(id => memberMap[id] || id)
+      .join(', ');
+    const hasReceipt = Boolean(exp.receipt && exp.receipt.data);
+
+    return {
+      id: exp.id,
+      date: exp.date || '',
+      title: exp.title || 'Expense',
+      amount: parseFloat(exp.amount) || 0,
+      paidByName,
+      category: exp.category || 'Other',
+      splitType: (exp.splitType || 'equal').toLowerCase() === 'custom' ? 'Custom' : 'Equal',
+      participantNames,
+      hasReceipt
+    };
+  });
+
+  const reportDateStr = new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+  return {
+    groupName: group.name || 'Smart Expense Splitter',
+    reportDate: reportDateStr,
+    scopeLabel,
+    totalExpenses: totalSpent,
+    expenseCount: expenses.length,
+    totalPendingAmount: totalPendingCents / 100,
+    budgetStats,
+    members: memberBalancesList,
+    expenses: expenseRows,
+    settlements: settlementDetails,
+    paymentHistory,
+    analytics: {
+      highestExpense,
+      highestCategory: categoryData.highestCategory,
+      highestPayer: memberSpending.highestPayer,
+      averageExpense
+    }
+  };
+}
+
 // Universal module export support (Node.js & Browser)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -1132,6 +1391,10 @@ if (typeof module !== 'undefined' && module.exports) {
     compressReceiptImage,
     compareBalances,
     compareBudgetStats,
-    filterAndSortExpenses
+    filterAndSortExpenses,
+    generateExpenseSummaryText,
+    generateSettlementSummaryText,
+    compileReportData
   };
 }
+

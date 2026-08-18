@@ -319,7 +319,7 @@ const realSettlements = calculateSettlements(realBalances);
 assert(Array.isArray(realSettlements), 'Real settlements generated from full appState');
 
 // 31. Smart Spending Insights unaffected by filter
-const realInsights = generateSmartInsights(appState.expenses, appState.members, appState.group);
+const realInsights = generateSmartInsights(appState);
 assert(realInsights.length > 0, 'Smart Insights operate on complete expense dataset');
 
 // -----------------------------------------------------------------------------

@@ -10,7 +10,7 @@ let undoStack = [];
 let redoStack = [];
 
 /**
- * Creates a deep copy state snapshot object.
+ * Creates a deep copy state snapshot object with group scoping.
  * @param {Object} appState 
  * @param {string} actionName 
  * @returns {Object} Snapshot object
@@ -26,6 +26,7 @@ function createSnapshot(appState, actionName) {
 
   return {
     actionName: actionName || 'State Change',
+    groupId: appState ? appState.activeGroupId : null,
     state: clonedState,
     timestamp: new Date().toISOString()
   };
@@ -105,6 +106,13 @@ function performUndo(currentAppState) {
     return { success: false, error: 'Nothing to undo.' };
   }
 
+  const activeGroupId = currentAppState ? currentAppState.activeGroupId : null;
+  const lastUndo = undoStack[undoStack.length - 1];
+
+  if (activeGroupId && lastUndo.groupId && lastUndo.groupId !== activeGroupId) {
+    return { success: false, error: 'Cannot undo actions from a different group workspace.' };
+  }
+
   const targetSnapshot = undoStack.pop();
 
   // Push current state to redo stack
@@ -136,6 +144,13 @@ function performRedo(currentAppState) {
     return { success: false, error: 'Nothing to redo.' };
   }
 
+  const activeGroupId = currentAppState ? currentAppState.activeGroupId : null;
+  const lastRedo = redoStack[redoStack.length - 1];
+
+  if (activeGroupId && lastRedo.groupId && lastRedo.groupId !== activeGroupId) {
+    return { success: false, error: 'Cannot redo actions from a different group workspace.' };
+  }
+
   const targetSnapshot = redoStack.pop();
 
   // Push current state to undo stack
@@ -157,19 +172,25 @@ function performRedo(currentAppState) {
 }
 
 /**
- * Returns current status of undo/redo stacks for UI button state.
+ * Returns current status of undo/redo stacks for UI button state, filtered by current active group.
  * 
+ * @param {Object} [appState] 
  * @returns {{ canUndo: boolean, canRedo: boolean, undoActionName: string|null, redoActionName: string|null, undoCount: number, redoCount: number }}
  */
-function getHistoryInfo() {
+function getHistoryInfo(appState) {
+  const activeGroupId = appState ? appState.activeGroupId : null;
+
   const lastUndo = undoStack.length > 0 ? undoStack[undoStack.length - 1] : null;
   const lastRedo = redoStack.length > 0 ? redoStack[redoStack.length - 1] : null;
 
+  const canUndo = !!(lastUndo && (!activeGroupId || !lastUndo.groupId || lastUndo.groupId === activeGroupId));
+  const canRedo = !!(lastRedo && (!activeGroupId || !lastRedo.groupId || lastRedo.groupId === activeGroupId));
+
   return {
-    canUndo: undoStack.length > 0,
-    canRedo: redoStack.length > 0,
-    undoActionName: lastUndo ? lastUndo.actionName : null,
-    redoActionName: lastRedo ? lastRedo.actionName : null,
+    canUndo,
+    canRedo,
+    undoActionName: canUndo ? lastUndo.actionName : null,
+    redoActionName: canRedo ? lastRedo.actionName : null,
     undoCount: undoStack.length,
     redoCount: redoStack.length
   };

@@ -55,33 +55,184 @@ function clearActivityHistory(appState) {
 }
 
 /**
- * Creates a new group.
+ * Creates a new independent group workspace.
  * @param {Object} appState 
  * @param {string} name 
  * @returns {{ success: boolean, error?: string, group?: Object }}
  */
-function createGroup(appState, name) {
+function createGroupWorkspace(appState, name) {
   const trimmedName = (name || '').trim();
   if (!trimmedName || trimmedName.length < 2 || trimmedName.length > 50) {
     return { success: false, error: 'Group name must be between 2 and 50 characters.' };
   }
 
-  appState.group = {
-    id: `group_${Date.now()}`,
+  if (!Array.isArray(appState.groups)) {
+    appState.groups = [];
+  }
+
+  const newGroup = {
+    id: `group_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     name: trimmedName,
-    budget: null,
     currentUserId: null,
-    createdAt: new Date().toISOString()
+    budget: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    members: [],
+    expenses: [],
+    settlements: [],
+    activities: [{
+      id: `act_${Date.now()}`,
+      type: 'group_created',
+      category: 'all',
+      message: `Group "${trimmedName}" was created`,
+      timestamp: new Date().toISOString()
+    }],
+    recurringExpenses: [],
+    templates: []
   };
 
-  logActivity(appState, {
-    type: 'group_created',
-    category: 'all',
-    message: `Group "${trimmedName}" was created`
-  });
+  appState.groups.push(newGroup);
+  appState.activeGroupId = newGroup.id;
+  if (storeModule.syncActiveGroupProjections) {
+    storeModule.syncActiveGroupProjections(appState);
+  }
+  storeModule.saveData(appState);
+
+  return { success: true, group: newGroup };
+}
+
+/**
+ * Legacy wrapper for creating a group.
+ */
+function createGroup(appState, name) {
+  return createGroupWorkspace(appState, name);
+}
+
+/**
+ * Switches the current active group workspace.
+ * @param {Object} appState 
+ * @param {string} groupId 
+ * @returns {{ success: boolean, error?: string, group?: Object }}
+ */
+function switchActiveGroup(appState, groupId) {
+  if (!Array.isArray(appState.groups)) {
+    appState.groups = [];
+  }
+
+  const targetGroup = appState.groups.find(g => g.id === groupId);
+  if (!targetGroup) {
+    return { success: false, error: 'Target group not found.' };
+  }
+
+  appState.activeGroupId = targetGroup.id;
+  if (storeModule.syncActiveGroupProjections) {
+    storeModule.syncActiveGroupProjections(appState);
+  }
+
+  recalculateGroupSettlements(appState);
+  storeModule.saveData(appState);
+
+  return { success: true, group: targetGroup };
+}
+
+/**
+ * Renames an existing group workspace without altering financial data.
+ * @param {Object} appState 
+ * @param {string} groupId 
+ * @param {string} newName 
+ * @returns {{ success: boolean, error?: string, group?: Object }}
+ */
+function renameGroupWorkspace(appState, groupId, newName) {
+  const trimmedName = (newName || '').trim();
+  if (!trimmedName || trimmedName.length < 2 || trimmedName.length > 50) {
+    return { success: false, error: 'Group name must be between 2 and 50 characters.' };
+  }
+
+  const targetGroup = (appState.groups || []).find(g => g.id === groupId);
+  if (!targetGroup) {
+    return { success: false, error: 'Group not found.' };
+  }
+
+  targetGroup.name = trimmedName;
+  targetGroup.updatedAt = new Date().toISOString();
+
+  if (appState.activeGroupId === groupId && appState.group) {
+    appState.group.name = trimmedName;
+  }
 
   storeModule.saveData(appState);
-  return { success: true, group: appState.group };
+  return { success: true, group: targetGroup };
+}
+
+/**
+ * Permanently deletes a group workspace.
+ * @param {Object} appState 
+ * @param {string} groupId 
+ * @returns {{ success: boolean, error?: string, deletedGroup?: Object, remainingCount?: number }}
+ */
+function deleteGroupWorkspace(appState, groupId) {
+  if (!Array.isArray(appState.groups)) {
+    return { success: false, error: 'No groups found.' };
+  }
+
+  const index = appState.groups.findIndex(g => g.id === groupId);
+  if (index === -1) {
+    return { success: false, error: 'Group not found.' };
+  }
+
+  const deletedGroup = appState.groups[index];
+  appState.groups = appState.groups.filter(g => g.id !== groupId);
+
+  if (appState.activeGroupId === groupId) {
+    if (appState.groups.length > 0) {
+      appState.activeGroupId = appState.groups[0].id;
+    } else {
+      appState.activeGroupId = null;
+    }
+  }
+
+  if (storeModule.syncActiveGroupProjections) {
+    storeModule.syncActiveGroupProjections(appState);
+  }
+
+  if (appState.group) {
+    recalculateGroupSettlements(appState);
+  }
+
+  storeModule.saveData(appState);
+  return { success: true, deletedGroup, remainingCount: appState.groups.length };
+}
+
+/**
+ * Calculates high-level metrics for a group workspace card.
+ * @param {Object} groupObj 
+ * @returns {{ memberCount: number, expenseCount: number, totalSpent: number, budget: number|null, pendingSettlementAmount: number }}
+ */
+function getGroupMetrics(groupObj) {
+  if (!groupObj) {
+    return { memberCount: 0, expenseCount: 0, totalSpent: 0, budget: null, pendingSettlementAmount: 0 };
+  }
+
+  const memberCount = (groupObj.members || []).length;
+  const expenseCount = (groupObj.expenses || []).length;
+  const totalSpent = (groupObj.expenses || []).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+  const budget = typeof groupObj.budget === 'number' ? groupObj.budget : null;
+
+  const pendingSettlementAmount = (groupObj.settlements || []).reduce((sum, s) => {
+    if (s.status !== 'paid') {
+      const stats = calcModule.getSettlementPaymentStats ? calcModule.getSettlementPaymentStats(s) : { remainingAmount: s.amount };
+      return sum + (stats.remainingAmount || 0);
+    }
+    return sum;
+  }, 0);
+
+  return {
+    memberCount,
+    expenseCount,
+    totalSpent,
+    budget,
+    pendingSettlementAmount
+  };
 }
 
 /**
@@ -1555,6 +1706,11 @@ if (typeof module !== 'undefined' && module.exports) {
     addTemplate,
     editTemplate,
     deleteTemplate,
+    createGroupWorkspace,
+    switchActiveGroup,
+    renameGroupWorkspace,
+    deleteGroupWorkspace,
+    getGroupMetrics,
     duplicateTemplate
   };
 }

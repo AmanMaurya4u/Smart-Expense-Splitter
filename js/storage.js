@@ -4,7 +4,7 @@
  */
 
 const STORAGE_KEY = 'expenseSplitter.data';
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 /**
  * Initial empty data structure template.
@@ -13,14 +13,57 @@ function getInitialData() {
   return {
     version: CURRENT_SCHEMA_VERSION,
     theme: 'light',
-    group: null, // { id, name, currentUserId, budget, createdAt }
-    members: [], // [{ id, name, contact, createdAt }]
-    expenses: [], // [{ id, title, amount, category, paidBy, splitType, participants, customShares, date, createdAt }]
-    settlements: [], // [{ id, from, to, amount, status, payments, paidAt }]
-    activities: [], // [{ id, type, category, message, actor, amount, relatedEntityId, timestamp }]
-    recurringExpenses: [], // [{ id, title, amount, paidBy, participants, splitType, customShares, category, frequency, startDate, nextDueDate, status, lastGeneratedDate, createdAt }]
-    templates: [] // [{ id, name, title, defaultAmount, category, splitType, participants, customShares, defaultPayer, createdAt, updatedAt }]
+    activeGroupId: null,
+    groups: [],
+    group: null, // Pointer reference to active group
+    members: [], // Pointer reference to active group's members
+    expenses: [], // Pointer reference to active group's expenses
+    settlements: [], // Pointer reference to active group's settlements
+    activities: [], // Pointer reference to active group's activities
+    recurringExpenses: [], // Pointer reference to active group's recurring expenses
+    templates: [] // Pointer reference to active group's templates
   };
+}
+
+/**
+ * Synchronizes root pointer references (group, members, expenses, etc.) with active group.
+ * @param {Object} appState 
+ */
+function syncActiveGroupProjections(appState) {
+  if (!appState || typeof appState !== 'object') return;
+  if (!Array.isArray(appState.groups)) appState.groups = [];
+
+  let activeGroup = appState.groups.find(g => g.id === appState.activeGroupId);
+  if (!activeGroup && appState.groups.length > 0) {
+    activeGroup = appState.groups[0];
+    appState.activeGroupId = activeGroup.id;
+  }
+
+  if (activeGroup) {
+    if (!Array.isArray(activeGroup.members)) activeGroup.members = [];
+    if (!Array.isArray(activeGroup.expenses)) activeGroup.expenses = [];
+    if (!Array.isArray(activeGroup.settlements)) activeGroup.settlements = [];
+    if (!Array.isArray(activeGroup.activities)) activeGroup.activities = [];
+    if (!Array.isArray(activeGroup.recurringExpenses)) activeGroup.recurringExpenses = [];
+    if (!Array.isArray(activeGroup.templates)) activeGroup.templates = [];
+
+    appState.group = activeGroup;
+    appState.members = activeGroup.members;
+    appState.expenses = activeGroup.expenses;
+    appState.settlements = activeGroup.settlements;
+    appState.activities = activeGroup.activities;
+    appState.recurringExpenses = activeGroup.recurringExpenses;
+    appState.templates = activeGroup.templates;
+  } else {
+    appState.activeGroupId = null;
+    appState.group = null;
+    appState.members = [];
+    appState.expenses = [];
+    appState.settlements = [];
+    appState.activities = [];
+    appState.recurringExpenses = [];
+    appState.templates = [];
+  }
 }
 
 /**
@@ -74,6 +117,8 @@ function saveData(data) {
   }
 
   try {
+    // Sync active group data back to groups array before persisting
+    syncActiveGroupProjections(data);
     const jsonString = JSON.stringify(data);
     localStorage.setItem(STORAGE_KEY, jsonString);
     return true;
@@ -94,7 +139,7 @@ function saveData(data) {
 }
 
 /**
- * Schema migration stub function.
+ * Schema migration function for multi-group state.
  * @param {Object} data 
  * @returns {Object} Migrated data
  */
@@ -103,46 +148,68 @@ function migrateData(data) {
     return getInitialData();
   }
 
-  // Version check and progressive migrations
-  if (!data.version || data.version < CURRENT_SCHEMA_VERSION) {
-    data.version = CURRENT_SCHEMA_VERSION;
-  }
-
-  // Ensure default structures exist
-  if (!Array.isArray(data.members)) data.members = [];
-  if (!Array.isArray(data.expenses)) data.expenses = [];
-  if (!Array.isArray(data.settlements)) data.settlements = [];
-  if (!Array.isArray(data.activities)) data.activities = [];
-  if (!Array.isArray(data.recurringExpenses)) data.recurringExpenses = [];
-  if (!Array.isArray(data.templates)) data.templates = [];
   if (!data.theme) data.theme = 'light';
-  if (data.group && typeof data.group.budget === 'undefined') {
-    data.group.budget = null;
+  data.version = CURRENT_SCHEMA_VERSION;
+
+  // Detect single-group legacy schema
+  const isLegacySingleGroup = !Array.isArray(data.groups) || data.groups.length === 0;
+
+  if (isLegacySingleGroup) {
+    const legacyGroupObj = data.group || { id: `group_${Date.now()}`, name: 'Default Group', budget: null };
+    const migratedGroup = {
+      id: legacyGroupObj.id || `group_${Date.now()}`,
+      name: legacyGroupObj.name || 'Default Group',
+      currentUserId: legacyGroupObj.currentUserId || null,
+      budget: typeof legacyGroupObj.budget === 'number' ? legacyGroupObj.budget : null,
+      createdAt: legacyGroupObj.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      members: Array.isArray(data.members) ? data.members : [],
+      expenses: Array.isArray(data.expenses) ? data.expenses : [],
+      settlements: Array.isArray(data.settlements) ? data.settlements : [],
+      activities: Array.isArray(data.activities) ? data.activities : [],
+      recurringExpenses: Array.isArray(data.recurringExpenses) ? data.recurringExpenses : [],
+      templates: Array.isArray(data.templates) ? data.templates : []
+    };
+
+    data.groups = [migratedGroup];
+    data.activeGroupId = migratedGroup.id;
   }
 
-  // Ensure older expenses safely have receipt property defaulted to null
-  data.expenses.forEach(e => {
-    if (typeof e.receipt === 'undefined') {
-      e.receipt = null;
-    }
-  });
+  // Ensure every group inside groups array is properly structured
+  data.groups.forEach(g => {
+    if (!g.id) g.id = `group_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    if (!g.name) g.name = 'Group';
+    if (!Array.isArray(g.members)) g.members = [];
+    if (!Array.isArray(g.expenses)) g.expenses = [];
+    if (!Array.isArray(g.settlements)) g.settlements = [];
+    if (!Array.isArray(g.activities)) g.activities = [];
+    if (!Array.isArray(g.recurringExpenses)) g.recurringExpenses = [];
+    if (!Array.isArray(g.templates)) g.templates = [];
+    if (typeof g.budget === 'undefined') g.budget = null;
 
-  // Backward compatibility migration for legacy settlements without payments history
-  data.settlements.forEach(s => {
-    if (!Array.isArray(s.payments)) {
-      s.payments = [];
-      if (s.status === 'paid' && s.amount > 0) {
-        s.payments.push({
-          id: `pay_legacy_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-          amount: s.amount,
-          paymentMethod: 'Other',
-          note: 'Legacy full payment',
-          date: s.paidAt ? s.paidAt.split('T')[0] : new Date().toISOString().split('T')[0]
-        });
+    // Ensure expenses have receipt property
+    g.expenses.forEach(e => {
+      if (typeof e.receipt === 'undefined') e.receipt = null;
+    });
+
+    // Ensure settlements have payments history
+    g.settlements.forEach(s => {
+      if (!Array.isArray(s.payments)) {
+        s.payments = [];
+        if (s.status === 'paid' && s.amount > 0) {
+          s.payments.push({
+            id: `pay_legacy_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            amount: s.amount,
+            paymentMethod: 'Other',
+            note: 'Legacy full payment',
+            date: s.paidAt ? s.paidAt.split('T')[0] : new Date().toISOString().split('T')[0]
+          });
+        }
       }
-    }
+    });
   });
 
+  syncActiveGroupProjections(data);
   return data;
 }
 
@@ -238,6 +305,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadData,
     saveData,
     migrateData,
+    syncActiveGroupProjections,
     clearAllData,
     escapeCSVCell,
     generateCSVFilename,

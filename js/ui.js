@@ -1230,6 +1230,69 @@ function renderSimulatorTab(appState, simState) {
   `;
 }
 
+/**
+ * Renders Expense Templates list grid
+ * 
+ * @param {Object} appState 
+ */
+function renderTemplatesList(appState) {
+  const container = document.getElementById('templates-grid');
+  const emptyState = document.getElementById('templates-empty-state');
+  if (!container) return;
+
+  const rawTemplates = appState.templates || [];
+  const members = appState.members || [];
+  const memberMap = {};
+  members.forEach(m => { memberMap[m.id] = m.name; });
+
+  if (rawTemplates.length === 0) {
+    container.classList.add('hidden');
+    if (emptyState) emptyState.classList.remove('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+  if (emptyState) emptyState.classList.add('hidden');
+
+  container.innerHTML = rawTemplates.map(t => {
+    const validParticipants = (t.participants || []).filter(id => memberMap[id]);
+    const payerName = t.defaultPayer && memberMap[t.defaultPayer] ? memberMap[t.defaultPayer] : 'Any Member';
+    const amountText = t.defaultAmount ? `₹${t.defaultAmount.toFixed(2)}` : 'Flexible Amount';
+    const participantCount = validParticipants.length;
+    const participantNames = validParticipants.map(id => memberMap[id]).join(', ');
+
+    return `
+      <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <h4 style="font-size: 1.05rem; font-weight: 600; margin: 0;">${escapeHtml(t.name)}</h4>
+              <span class="badge badge-category">${escapeHtml(t.category || 'Other')}</span>
+              <span class="badge badge-secondary" style="font-size: 0.72rem;">${t.splitType === 'custom' ? 'Custom Split' : 'Equal Split'}</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 4px;">
+              Title: <strong>"${escapeHtml(t.title)}"</strong>
+            </div>
+          </div>
+          <span style="font-size: 1.15rem; font-weight: 700; color: var(--color-primary);">${amountText}</span>
+        </div>
+
+        <div style="background: var(--color-bg-subtle); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px;">
+          <div>Default Payer: <strong>${escapeHtml(payerName)}</strong></div>
+          <div>Participants (${participantCount}): <strong>${escapeHtml(participantNames || 'None')}</strong></div>
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+          <button class="btn btn-primary btn-sm btn-use-template" data-id="${t.id}" style="flex: 1; min-width: 110px;">⚡ Use Template</button>
+          <button class="btn btn-secondary btn-sm btn-duplicate-template" data-id="${t.id}">Duplicate</button>
+          <button class="btn btn-secondary btn-sm btn-edit-template" data-id="${t.id}">Edit</button>
+          <button class="btn btn-danger btn-sm btn-delete-template" data-id="${t.id}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -1252,7 +1315,9 @@ if (typeof module !== 'undefined' && module.exports) {
     renderReceiptPreview,
     openReceiptLightboxModal,
     renderSimulatorTab,
+    renderTemplatesList,
     escapeHtml
   };
 }
+
 

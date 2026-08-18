@@ -30,6 +30,8 @@ let editingRecurringId = null;
 let deletingRecurringId = null;
 let editingTemplateId = null;
 let deletingTemplateId = null;
+let renamingGroupId = null;
+let deletingGroupId = null;
 
 // Receipt upload transient state
 let currentExpenseReceipt = null;

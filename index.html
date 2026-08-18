@@ -172,6 +172,7 @@
           <button class="tab-btn" data-tab="settlements">Settlements</button>
           <button class="tab-btn" data-tab="stats">Spend Insights</button>
           <button class="tab-btn" data-tab="activity">Activity</button>
+          <button class="tab-btn" data-tab="simulator">What-If Simulator</button>
         </nav>
 
         <button id="btn-open-add-expense" class="btn btn-primary">
@@ -420,6 +421,60 @@
           </div>
           <div class="empty-state-title">No recurring expenses set up</div>
           <p>Create recurring templates for Rent, Wi-Fi, Subscriptions, and Bills to never miss a split.</p>
+        </div>
+      </div>
+
+      <!-- Tab Content 7: What-If Simulator -->
+      <div id="tab-simulator" class="hidden">
+        <!-- Simulator Controls Bar -->
+        <div class="card" style="margin-bottom: var(--space-4); background: var(--color-surface);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+            <div>
+              <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                🧪 WHAT-IF SIMULATOR
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 2px;">
+                Safely experiment with hypothetical changes without modifying actual application data.
+              </p>
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="btn-open-sim-payment" class="btn btn-secondary btn-sm">⚡ Simulate Payment</button>
+              <button id="btn-open-sim-expense" class="btn btn-secondary btn-sm">➕ Simulate Expense</button>
+              <button id="btn-open-sim-edit-amount" class="btn btn-secondary btn-sm">✏️ Modify Amount</button>
+              <button id="btn-open-sim-remove-expense" class="btn btn-secondary btn-sm">🗑️ Remove Expense</button>
+            </div>
+          </div>
+
+          <!-- Active Simulation Changes List -->
+          <div id="sim-changes-container" style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+            <div style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 6px;">
+              Simulation Changes (<span id="sim-changes-count">0</span>)
+            </div>
+            <div id="sim-changes-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <!-- Dynamic chips of active simulation changes -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty state when no expenses exist -->
+        <div id="simulator-empty-state" class="empty-state hidden">
+          <div class="empty-state-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 28px; height: 28px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </div>
+          <div class="empty-state-title">Add some expenses first to use the What-If Simulator.</div>
+          <p>Create expenses for your group to start previewing hypothetical settlements and balance changes.</p>
+        </div>
+
+        <!-- Simulator Results Comparison Container -->
+        <div id="simulator-results-container" style="display: flex; flex-direction: column; gap: var(--space-4);">
+          <!-- Dynamic Before vs After Comparison HTML rendered by ui.js -->
+        </div>
+
+        <!-- Bottom Actions Row (Reset & Apply) -->
+        <div class="card" style="margin-top: var(--space-4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <button id="btn-reset-simulation" class="btn btn-secondary">Reset Simulation</button>
+          <button id="btn-open-apply-simulation" class="btn btn-primary">Apply Changes</button>
         </div>
       </div>
 

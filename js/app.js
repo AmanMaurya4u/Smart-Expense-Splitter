@@ -8,6 +8,7 @@ const storage = typeof window !== 'undefined' && window.loadData ? window : (typ
 const expense = typeof window !== 'undefined' && window.addExpense ? window : (typeof require !== 'undefined' ? require('./expense.js') : {});
 const ui = typeof window !== 'undefined' && window.showScreen ? window : (typeof require !== 'undefined' ? require('./ui.js') : {});
 const calcLogic = typeof window !== 'undefined' && window.calculateCustomSplit ? window : (typeof require !== 'undefined' ? require('./calculation.js') : {});
+const historyManager = typeof window !== 'undefined' && window.pushUndoSnapshot ? window : (typeof require !== 'undefined' ? require('./history.js') : {});
 
 // Global State Instance
 let appState = {
@@ -169,7 +170,64 @@ function renderSetupMembersList() {
 /**
  * Event Listener Wiring
  */
-function bindEventListeners() {
+  // Undo & Redo Handlers
+  function handleUndoAction() {
+    const res = historyManager.performUndo ? historyManager.performUndo(appState) : { success: false };
+    if (!res.success) {
+      ui.showToast(res.error || 'Nothing to undo.', 'info');
+      return;
+    }
+
+    appState = res.restoredState;
+    storage.saveData(appState);
+    renderFullDashboard();
+    ui.showToast(`Undone: ${res.actionName}`, 'info');
+  }
+
+  function handleRedoAction() {
+    const res = historyManager.performRedo ? historyManager.performRedo(appState) : { success: false };
+    if (!res.success) {
+      ui.showToast(res.error || 'Nothing to redo.', 'info');
+      return;
+    }
+
+    appState = res.restoredState;
+    storage.saveData(appState);
+    renderFullDashboard();
+    ui.showToast(`Redone: ${res.actionName}`, 'info');
+  }
+
+  const btnUndo = document.getElementById('btn-undo');
+  if (btnUndo) {
+    btnUndo.addEventListener('click', () => handleUndoAction());
+  }
+
+  const btnRedo = document.getElementById('btn-redo');
+  if (btnRedo) {
+    btnRedo.addEventListener('click', () => handleRedoAction());
+  }
+
+  // Keyboard Shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
+  document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    if (target) {
+      const tag = target.tagName ? target.tagName.toLowerCase() : '';
+      const isEditable = tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+      if (isEditable) return;
+    }
+
+    const isCtrl = e.ctrlKey || e.metaKey;
+    const key = (e.key || '').toLowerCase();
+
+    if (isCtrl && key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      handleUndoAction();
+    } else if (isCtrl && (key === 'y' || (key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      handleRedoAction();
+    }
+  });
+
   // Theme Switcher
   const themeBtn = document.getElementById('btn-toggle-theme');
   if (themeBtn) {
@@ -204,6 +262,10 @@ function bindEventListeners() {
       const input = document.getElementById('input-group-name');
       ui.clearFieldError(input);
 
+      if (historyManager.pushUndoSnapshot && input.value.trim()) {
+        historyManager.pushUndoSnapshot(appState, `Create Group "${input.value.trim()}"`);
+      }
+
       const res = expense.createGroup(appState, input.value);
       if (!res.success) {
         ui.showFieldError(input, res.error);
@@ -224,6 +286,10 @@ function bindEventListeners() {
       e.preventDefault();
       const input = document.getElementById('input-member-name');
       ui.clearFieldError(input);
+
+      if (historyManager.pushUndoSnapshot && input.value.trim()) {
+        historyManager.pushUndoSnapshot(appState, `Add Member "${input.value.trim()}"`);
+      }
 
       const res = expense.addMember(appState, input.value);
       if (!res.success) {
@@ -466,6 +532,10 @@ function bindEventListeners() {
       ui.openModal('modal-confirm-delete');
     } else if (e.target.classList.contains('btn-remove-member')) {
       const id = e.target.getAttribute('data-id');
+      const targetMember = (appState.members || []).find(m => m.id === id);
+      if (historyManager.pushUndoSnapshot && expense.isMemberDeletable(appState, id)) {
+        historyManager.pushUndoSnapshot(appState, `Remove Member "${targetMember ? targetMember.name : 'Member'}"`);
+      }
       const res = expense.removeMember(appState, id);
       if (res.success) {
         renderFullDashboard();
@@ -483,6 +553,9 @@ function bindEventListeners() {
       }
     } else if (e.target.classList.contains('btn-toggle-settlement')) {
       const id = e.target.getAttribute('data-id');
+      if (historyManager.pushUndoSnapshot) {
+        historyManager.pushUndoSnapshot(appState, `Toggle Settlement`);
+      }
       const res = expense.toggleSettlementStatus(appState, id);
       if (res.success) {
         renderFullDashboard();
@@ -494,6 +567,9 @@ function bindEventListeners() {
     } else if (e.target.classList.contains('btn-delete-payment')) {
       const settlementId = e.target.getAttribute('data-settlement-id');
       const paymentId = e.target.getAttribute('data-payment-id');
+      if (historyManager.pushUndoSnapshot) {
+        historyManager.pushUndoSnapshot(appState, `Delete Payment`);
+      }
       const res = expense.deletePartialPayment(appState, settlementId, paymentId);
       if (res.success) {
         renderFullDashboard();
@@ -503,6 +579,10 @@ function bindEventListeners() {
       openSetBudgetModal();
     } else if (e.target.classList.contains('btn-convert-recurring')) {
       const id = e.target.getAttribute('data-id');
+      const targetRec = (appState.recurringExpenses || []).find(r => r.id === id);
+      if (historyManager.pushUndoSnapshot) {
+        historyManager.pushUndoSnapshot(appState, `Add Expense from Recurring "${targetRec ? targetRec.title : 'Recurring'}"`);
+      }
       const res = expense.convertRecurringToExpense(appState, id);
       if (res.success) {
         renderFullDashboard();
@@ -512,6 +592,10 @@ function bindEventListeners() {
       }
     } else if (e.target.classList.contains('btn-toggle-pause-recurring')) {
       const id = e.target.getAttribute('data-id');
+      const targetRec = (appState.recurringExpenses || []).find(r => r.id === id);
+      if (historyManager.pushUndoSnapshot && targetRec) {
+        historyManager.pushUndoSnapshot(appState, `${targetRec.status === 'paused' ? 'Resume' : 'Pause'} Recurring "${targetRec.title}"`);
+      }
       const res = expense.togglePauseRecurringExpense(appState, id);
       if (res.success) {
         renderFullDashboard();
@@ -601,6 +685,9 @@ function bindEventListeners() {
   if (btnConfirmApplySim) {
     btnConfirmApplySim.addEventListener('click', () => {
       if (simulationState) {
+        if (historyManager.pushUndoSnapshot) {
+          historyManager.pushUndoSnapshot(appState, `Apply What-If Simulation`);
+        }
         const res = expense.applySimulationToAppState(appState, simulationState);
         simulationState = expense.initSimulationState(appState);
         ui.closeModal('modal-confirm-apply-simulation');
@@ -717,6 +804,9 @@ function bindEventListeners() {
   const btnRemoveBudget = document.getElementById('btn-remove-budget');
   if (btnRemoveBudget) {
     btnRemoveBudget.addEventListener('click', () => {
+      if (historyManager.pushUndoSnapshot) {
+        historyManager.pushUndoSnapshot(appState, `Remove Group Budget`);
+      }
       expense.removeGroupBudget(appState);
       ui.closeModal('modal-set-budget');
       renderFullDashboard();
@@ -738,6 +828,10 @@ function bindEventListeners() {
   if (btnConfirmDelete) {
     btnConfirmDelete.addEventListener('click', () => {
       if (deletingExpenseId) {
+        const targetExp = (appState.expenses || []).find(e => e.id === deletingExpenseId);
+        if (historyManager.pushUndoSnapshot) {
+          historyManager.pushUndoSnapshot(appState, `Delete "${targetExp ? targetExp.title : 'Expense'}"`);
+        }
         expense.deleteExpense(appState, deletingExpenseId);
         deletingExpenseId = null;
         ui.closeModal('modal-confirm-delete');
@@ -752,6 +846,10 @@ function bindEventListeners() {
   if (btnConfirmDeleteRecurring) {
     btnConfirmDeleteRecurring.addEventListener('click', () => {
       if (deletingRecurringId) {
+        const targetRec = (appState.recurringExpenses || []).find(r => r.id === deletingRecurringId);
+        if (historyManager.pushUndoSnapshot) {
+          historyManager.pushUndoSnapshot(appState, `Delete Recurring "${targetRec ? targetRec.title : 'Recurring'}"`);
+        }
         expense.deleteRecurringExpense(appState, deletingRecurringId);
         deletingRecurringId = null;
         ui.closeModal('modal-confirm-delete-recurring');
@@ -1329,6 +1427,17 @@ function handleExpenseFormSubmit() {
   };
 
   const isEditing = !!editingExpenseId;
+  if (isEditing) {
+    const targetExp = (appState.expenses || []).find(e => e.id === editingExpenseId);
+    if (historyManager.pushUndoSnapshot) {
+      historyManager.pushUndoSnapshot(appState, `Edit "${targetExp ? targetExp.title : title.trim()}"`);
+    }
+  } else {
+    if (historyManager.pushUndoSnapshot) {
+      historyManager.pushUndoSnapshot(appState, `Add "${title.trim()}"`);
+    }
+  }
+
   let res;
   if (editingExpenseId) {
     res = expense.editExpense(appState, editingExpenseId, payload);
@@ -1413,6 +1522,10 @@ function handleMakePaymentSubmit() {
   const date = inputDate ? inputDate.value : new Date().toISOString().split('T')[0];
   const note = inputNote ? inputNote.value : '';
 
+  if (historyManager.pushUndoSnapshot) {
+    historyManager.pushUndoSnapshot(appState, `Make Payment ₹${parseFloat(amount).toFixed(2)}`);
+  }
+
   const res = expense.addPartialPayment(appState, activePaymentSettlementId, {
     amount,
     paymentMethod,
@@ -1465,6 +1578,12 @@ function handleSetBudgetSubmit() {
   if (!inputBudget) return;
 
   ui.clearFieldError(inputBudget);
+
+  const currentBudget = appState.group ? appState.group.budget : null;
+  const isEdit = typeof currentBudget === 'number' && currentBudget > 0;
+  if (historyManager.pushUndoSnapshot && !isNaN(parseFloat(inputBudget.value))) {
+    historyManager.pushUndoSnapshot(appState, isEdit ? `Update Budget ₹${parseFloat(inputBudget.value).toFixed(2)}` : `Set Budget ₹${parseFloat(inputBudget.value).toFixed(2)}`);
+  }
 
   const res = expense.setGroupBudget(appState, inputBudget.value);
   if (!res.success) {
@@ -1697,6 +1816,18 @@ function handleRecurringExpenseFormSubmit() {
     nextDueDate,
     status
   };
+
+  const wasEditing = editingRecurringId;
+  if (wasEditing) {
+    const targetRec = (appState.recurringExpenses || []).find(r => r.id === editingRecurringId);
+    if (historyManager.pushUndoSnapshot) {
+      historyManager.pushUndoSnapshot(appState, `Edit Recurring "${targetRec ? targetRec.title : title.trim()}"`);
+    }
+  } else {
+    if (historyManager.pushUndoSnapshot) {
+      historyManager.pushUndoSnapshot(appState, `Add Recurring "${title.trim()}"`);
+    }
+  }
 
   let res;
   if (editingRecurringId) {
@@ -2074,6 +2205,18 @@ function handleTemplateFormSubmit() {
     defaultPayer
   };
 
+  const wasEditing = editingTemplateId;
+  if (wasEditing) {
+    const targetTpl = (appState.templates || []).find(t => t.id === editingTemplateId);
+    if (historyManager.pushUndoSnapshot) {
+      historyManager.pushUndoSnapshot(appState, `Edit Template "${targetTpl ? targetTpl.name : name.trim()}"`);
+    }
+  } else {
+    if (historyManager.pushUndoSnapshot) {
+      historyManager.pushUndoSnapshot(appState, `Create Template "${name.trim()}"`);
+    }
+  }
+
   let res;
   if (editingTemplateId) {
     res = expense.editTemplate(appState, editingTemplateId, templateData);
@@ -2094,6 +2237,11 @@ function handleTemplateFormSubmit() {
 }
 
 function handleDuplicateTemplateAction(templateId) {
+  const targetTpl = (appState.templates || []).find(t => t.id === templateId);
+  if (historyManager.pushUndoSnapshot) {
+    historyManager.pushUndoSnapshot(appState, `Duplicate Template "${targetTpl ? targetTpl.name : 'Template'}"`);
+  }
+
   const res = expense.duplicateTemplate(appState, templateId);
   if (!res.success) {
     ui.showToast(res.error, 'danger');
@@ -2111,6 +2259,11 @@ function openDeleteTemplateModal(templateId) {
 
 function handleDeleteTemplateSubmit() {
   if (!deletingTemplateId) return;
+
+  const targetTpl = (appState.templates || []).find(t => t.id === deletingTemplateId);
+  if (historyManager.pushUndoSnapshot) {
+    historyManager.pushUndoSnapshot(appState, `Delete Template "${targetTpl ? targetTpl.name : 'Template'}"`);
+  }
 
   const res = expense.deleteTemplate(appState, deletingTemplateId);
   deletingTemplateId = null;

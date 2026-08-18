@@ -168,6 +168,7 @@
         <nav class="tabs-nav">
           <button class="tab-btn active" data-tab="expenses">Expenses</button>
           <button class="tab-btn" data-tab="recurring">Recurring</button>
+          <button class="tab-btn" data-tab="templates">Templates</button>
           <button class="tab-btn" data-tab="members">Members</button>
           <button class="tab-btn" data-tab="settlements">Settlements</button>
           <button class="tab-btn" data-tab="stats">Spend Insights</button>
@@ -475,6 +476,33 @@
         <div class="card" style="margin-top: var(--space-4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <button id="btn-reset-simulation" class="btn btn-secondary">Reset Simulation</button>
           <button id="btn-open-apply-simulation" class="btn btn-primary">Apply Changes</button>
+        </div>
+      </div>
+
+      <!-- Tab Content 8: Expense Templates -->
+      <div id="tab-templates" class="hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); flex-wrap: wrap; gap: var(--space-3);">
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 600;">Expense Templates</h3>
+            <p style="font-size: 0.85rem; color: var(--color-text-muted);">Create reusable templates for expenses you add frequently.</p>
+          </div>
+          <button id="btn-open-add-template" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 18px; height: 18px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Create Template
+          </button>
+        </div>
+
+        <div id="templates-grid" class="members-grid">
+          <!-- Dynamic Template Cards -->
+        </div>
+
+        <div id="templates-empty-state" class="empty-state hidden">
+          <div class="empty-state-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 28px; height: 28px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          </div>
+          <div class="empty-state-title">No expense templates yet.</div>
+          <p>Create templates for expenses you add frequently.</p>
+          <button id="btn-open-add-template-empty" class="btn btn-primary btn-sm" style="margin-top: 12px;">Create Template</button>
         </div>
       </div>
 
@@ -1064,6 +1092,100 @@
       <div class="modal-footer">
         <button class="btn btn-secondary btn-close-modal">Cancel</button>
         <button id="btn-confirm-apply-simulation" class="btn btn-primary">Apply Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add/Edit Expense Template -->
+  <div id="modal-template" class="modal-overlay" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-template-title" class="modal-title">Create Expense Template</h3>
+        <button class="btn-icon btn-close-modal">✕</button>
+      </div>
+
+      <form id="form-template">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="input-template-name" class="form-label">Template Name *</label>
+            <input type="text" id="input-template-name" class="form-control" placeholder="e.g. Dinner, Cab, Groceries, Rent" required maxlength="50">
+          </div>
+
+          <div class="form-group">
+            <label for="input-template-title" class="form-label">Expense Title *</label>
+            <input type="text" id="input-template-title" class="form-control" placeholder="e.g. Dinner at Fisherman's Wharf" required maxlength="50">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+            <div class="form-group">
+              <label for="input-template-amount" class="form-label">Default Amount (₹) (Optional)</label>
+              <input type="number" id="input-template-amount" class="form-control" placeholder="Optional, e.g. 1200" step="0.01" min="0.01">
+            </div>
+
+            <div class="form-group">
+              <label for="select-template-category" class="form-label">Category</label>
+              <select id="select-template-category" class="form-control">
+                <option value="Food" selected>Food</option>
+                <option value="Travel">Travel</option>
+                <option value="Hotel">Hotel</option>
+                <option value="Shopping">Shopping</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="select-template-paid-by" class="form-label">Default Payer (Optional)</label>
+            <select id="select-template-paid-by" class="form-control">
+              <!-- Dynamic Members -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Split Type</label>
+            <div class="split-type-toggle">
+              <button type="button" id="btn-template-split-equal" class="split-type-btn active">Equal Split</button>
+              <button type="button" id="btn-template-split-custom" class="split-type-btn">Custom Amounts</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Default Participants</label>
+            <div id="template-participants-checkboxes" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+              <!-- Dynamic Checkboxes -->
+            </div>
+          </div>
+
+          <div id="template-custom-shares-container" class="form-group hidden" style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+            <label class="form-label">Enter Custom Shares</label>
+            <div id="template-custom-shares-inputs-list"></div>
+            <span id="template-custom-shares-status" class="stat-subtext" style="display: block; font-weight: 600; margin-top: 4px;"></span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Template</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm Delete Template Modal -->
+  <div id="modal-confirm-delete-template" class="modal-overlay" aria-hidden="true">
+    <div class="modal-dialog" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Delete Expense Template</h3>
+        <button class="btn-icon btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Delete this expense template?</p>
+        <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 6px;">Note: Existing expenses created from this template will remain completely unchanged.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-close-modal">Cancel</button>
+        <button id="btn-confirm-delete-template" class="btn btn-danger">Delete Template</button>
       </div>
     </div>
   </div>

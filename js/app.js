@@ -230,6 +230,55 @@ function renderSetupMembersList() {
     }
   });
 
+/**
+ * Resets filter state object and clears associated DOM filter inputs.
+ */
+function resetFilterStateAndDOM() {
+  currentFilterState = {
+    searchQuery: '',
+    category: 'ALL',
+    paidBy: 'ALL',
+    dateRange: 'ALL',
+    startDate: null,
+    endDate: null,
+    minAmount: null,
+    maxAmount: null,
+    splitType: 'ALL',
+    receipt: 'ALL',
+    sortBy: 'newest'
+  };
+
+  const searchInput = document.getElementById('input-search-expense');
+  if (searchInput) searchInput.value = '';
+
+  const catSelect = document.getElementById('select-filter-category');
+  if (catSelect) catSelect.value = 'ALL';
+
+  const paidSelect = document.getElementById('select-filter-paid-by');
+  if (paidSelect) paidSelect.value = 'ALL';
+
+  const dateSelect = document.getElementById('select-filter-date');
+  if (dateSelect) dateSelect.value = 'ALL';
+
+  const sortSelect = document.getElementById('select-sort-expense');
+  if (sortSelect) sortSelect.value = 'newest';
+
+  const minAmtInput = document.getElementById('input-filter-min-amount');
+  if (minAmtInput) minAmtInput.value = '';
+
+  const maxAmtInput = document.getElementById('input-filter-max-amount');
+  if (maxAmtInput) maxAmtInput.value = '';
+
+  const splitTypeSelect = document.getElementById('select-filter-split-type');
+  if (splitTypeSelect) splitTypeSelect.value = 'ALL';
+
+  const receiptSelect = document.getElementById('select-filter-receipt');
+  if (receiptSelect) receiptSelect.value = 'ALL';
+
+  const customDateContainer = document.getElementById('custom-date-range-container');
+  if (customDateContainer) customDateContainer.classList.add('hidden');
+}
+
   // Group Switcher Change Event Delegation
   document.addEventListener('change', (e) => {
     if (e.target && e.target.id === 'select-active-group') {
@@ -246,7 +295,7 @@ function renderSetupMembersList() {
       } else if (val && val !== appState.activeGroupId) {
         const res = expense.switchActiveGroup(appState, val);
         if (res.success) {
-          currentFilterState = resetFilterState ? resetFilterState() : { searchQuery: '', category: 'ALL', paidBy: 'ALL', dateRange: 'ALL', startDate: null, endDate: null, minAmount: null, maxAmount: null, sortBy: 'DATE_DESC' };
+          resetFilterStateAndDOM();
           renderFullDashboard();
           ui.showToast(`Switched workspace to "${res.group.name}"`, 'success');
         }
@@ -281,7 +330,7 @@ function renderSetupMembersList() {
       input.value = '';
       ui.closeModal('modal-create-group-workspace');
       ui.closeModal('modal-manage-groups');
-      currentFilterState = resetFilterState ? resetFilterState() : { searchQuery: '', category: 'ALL', paidBy: 'ALL', dateRange: 'ALL', startDate: null, endDate: null, minAmount: null, maxAmount: null, sortBy: 'DATE_DESC' };
+      resetFilterStateAndDOM();
       ui.showScreen('screen-dashboard');
       renderFullDashboard();
       ui.showToast(`Group "${res.group.name}" created!`, 'success');
@@ -295,7 +344,7 @@ function renderSetupMembersList() {
       const res = expense.switchActiveGroup(appState, id);
       if (res.success) {
         ui.closeModal('modal-manage-groups');
-        currentFilterState = resetFilterState ? resetFilterState() : { searchQuery: '', category: 'ALL', paidBy: 'ALL', dateRange: 'ALL', startDate: null, endDate: null, minAmount: null, maxAmount: null, sortBy: 'DATE_DESC' };
+        resetFilterStateAndDOM();
         renderFullDashboard();
         ui.showToast(`Switched workspace to "${res.group.name}"`, 'success');
       }

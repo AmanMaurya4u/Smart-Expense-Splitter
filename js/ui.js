@@ -143,6 +143,42 @@ function renderHeader(appState) {
       themeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
     }
   }
+
+  // Update Undo & Redo controls state
+  updateUndoRedoUI();
+}
+
+/**
+ * Updates Undo and Redo header button states and tooltips based on history stack.
+ * 
+ * @param {Object} [historyInfo] 
+ */
+function updateUndoRedoUI(historyInfo) {
+  const btnUndo = document.getElementById('btn-undo');
+  const btnRedo = document.getElementById('btn-redo');
+
+  const historyManager = typeof window !== 'undefined' && window.getHistoryInfo ? window : (typeof require !== 'undefined' ? require('./history.js') : {});
+  const info = historyInfo || (historyManager.getHistoryInfo ? historyManager.getHistoryInfo() : { canUndo: false, canRedo: false });
+
+  if (btnUndo) {
+    if (info.canUndo) {
+      btnUndo.removeAttribute('disabled');
+      btnUndo.title = `Undo: ${info.undoActionName || 'Last Action'} (Ctrl+Z)`;
+    } else {
+      btnUndo.setAttribute('disabled', 'true');
+      btnUndo.title = 'Nothing to undo (Ctrl+Z)';
+    }
+  }
+
+  if (btnRedo) {
+    if (info.canRedo) {
+      btnRedo.removeAttribute('disabled');
+      btnRedo.title = `Redo: ${info.redoActionName || 'Last Action'} (Ctrl+Y)`;
+    } else {
+      btnRedo.setAttribute('disabled', 'true');
+      btnRedo.title = 'Nothing to redo (Ctrl+Y)';
+    }
+  }
 }
 
 /**
@@ -1790,6 +1826,7 @@ if (typeof module !== 'undefined' && module.exports) {
     copyToClipboard,
     renderExportReportModal,
     renderPrintReport,
+    updateUndoRedoUI,
     escapeHtml
   };
 }

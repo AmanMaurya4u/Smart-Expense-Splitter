@@ -195,44 +195,84 @@ function renderSummaryCards(appState) {
 /**
  * Renders Expense List (Table for desktop, Cards for mobile)
  */
-function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', sortBy = 'newest') {
+/**
+ * Renders Expense List (Table for desktop, Cards for mobile) with full Search & Filters
+ * 
+ * @param {Object} appState 
+ * @param {Object} filterState 
+ */
+function renderExpenseList(appState, filterState = {}) {
   const tableBody = document.getElementById('expense-table-body');
   const cardsList = document.getElementById('expense-cards-list');
   const emptyState = document.getElementById('expenses-empty-state');
   const tableContainer = document.querySelector('.table-responsive');
+  const resultsCountEl = document.getElementById('filter-results-count');
+  const totalAmountBadgeEl = document.getElementById('filter-total-amount-badge');
+  const activeChipsContainer = document.getElementById('active-filter-chips');
+  const btnClearFilters = document.getElementById('btn-clear-filters');
+  const paidBySelect = document.getElementById('select-filter-paid-by');
 
   if (!tableBody || !cardsList) return;
 
+  const members = appState.members || [];
+  const rawExpenses = appState.expenses || [];
   const memberMap = {};
-  (appState.members || []).forEach(m => { memberMap[m.id] = m.name; });
+  members.forEach(m => { memberMap[m.id] = m.name; });
 
-  let expenses = [...(appState.expenses || [])];
-
-  // Apply Category Filter
-  if (filterCategory !== 'ALL') {
-    expenses = expenses.filter(e => e.category === filterCategory);
+  // Populate Paid By dropdown dynamically
+  if (paidBySelect) {
+    const currentVal = paidBySelect.value || 'ALL';
+    paidBySelect.innerHTML = '<option value="ALL">All Members</option>' +
+      members.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+    if (members.some(m => m.id === currentVal) || currentVal === 'ALL') {
+      paidBySelect.value = currentVal;
+    }
   }
 
-  // Apply Search Filter
-  if (searchQuery && searchQuery.trim() !== '') {
-    const query = searchQuery.trim().toLowerCase();
-    expenses = expenses.filter(e => e.title.toLowerCase().includes(query));
+  // Invoke calculation module filter and sort helper
+  const filterResult = calc.filterAndSortExpenses
+    ? calc.filterAndSortExpenses(rawExpenses, members, filterState)
+    : { filtered: rawExpenses, totalCount: rawExpenses.length, filteredCount: rawExpenses.length, filteredTotalAmount: 0 };
+
+  const { filtered, totalCount, filteredCount, filteredTotalAmount } = filterResult;
+
+  // Render Result Counter & Filtered Total Badge
+  const isFiltered = rawExpenses.length > 0 && (filteredCount !== totalCount || isAnyFilterActive(filterState));
+
+  if (resultsCountEl) {
+    if (rawExpenses.length === 0) {
+      resultsCountEl.textContent = 'Showing 0 expenses';
+    } else if (isFiltered) {
+      resultsCountEl.textContent = `Showing ${filteredCount} of ${totalCount} expenses`;
+    } else {
+      resultsCountEl.textContent = `Showing ${totalCount} expenses`;
+    }
   }
 
-  // Apply Sorting
-  if (sortBy === 'amount') {
-    expenses.sort((a, b) => b.amount - a.amount);
-  } else if (sortBy === 'category') {
-    expenses.sort((a, b) => a.category.localeCompare(b.category));
-  } else {
-    // Newest first default
-    expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (totalAmountBadgeEl) {
+    totalAmountBadgeEl.textContent = `Filtered Total: ₹${filteredTotalAmount.toFixed(2)}`;
   }
 
-  if (expenses.length === 0) {
+  // Render Active Filter Chips
+  renderActiveFilterChips(filterState, memberMap, activeChipsContainer, btnClearFilters);
+
+  // Render empty state if 0 expenses or 0 matching expenses
+  if (filtered.length === 0) {
     if (tableContainer) tableContainer.classList.add('hidden');
     cardsList.classList.add('hidden');
-    if (emptyState) emptyState.classList.remove('hidden');
+    if (emptyState) {
+      emptyState.classList.remove('hidden');
+      const titleEl = emptyState.querySelector('.empty-state-title');
+      const descEl = emptyState.querySelector('p');
+
+      if (rawExpenses.length === 0) {
+        if (titleEl) titleEl.textContent = 'No expenses recorded yet';
+        if (descEl) descEl.textContent = 'Click "+ Add Expense" to record your group\'s first transaction.';
+      } else {
+        if (titleEl) titleEl.textContent = 'No matching expenses found';
+        if (descEl) descEl.textContent = 'Try adjusting or clearing your search and filter criteria.';
+      }
+    }
     return;
   }
 
@@ -241,7 +281,7 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
   if (emptyState) emptyState.classList.add('hidden');
 
   // Desktop Table Rows
-  tableBody.innerHTML = expenses.map(exp => {
+  tableBody.innerHTML = filtered.map(exp => {
     const paidByName = memberMap[exp.paidBy] || 'Unknown';
     const participantCount = (exp.participants || []).length;
     const hasReceipt = exp.receipt && exp.receipt.data;
@@ -254,7 +294,7 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
           </div>
         </td>
         <td><span class="badge badge-category">${escapeHtml(exp.category || 'Other')}</span></td>
-        <td><strong>₹${exp.amount.toFixed(2)}</strong></td>
+        <td><strong>₹${parseFloat(exp.amount).toFixed(2)}</strong></td>
         <td>${escapeHtml(paidByName)}</td>
         <td>${participantCount} member${participantCount > 1 ? 's' : ''}</td>
         <td>${exp.date || ''}</td>
@@ -270,7 +310,7 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
   }).join('');
 
   // Mobile Stacked Cards
-  cardsList.innerHTML = expenses.map(exp => {
+  cardsList.innerHTML = filtered.map(exp => {
     const paidByName = memberMap[exp.paidBy] || 'Unknown';
     const hasReceipt = exp.receipt && exp.receipt.data;
     return `
@@ -283,7 +323,7 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
             </h4>
             <span class="badge badge-category" style="margin-top: 4px;">${escapeHtml(exp.category || 'Other')}</span>
           </div>
-          <span style="font-size: 1.1rem; font-weight: 700;">₹${exp.amount.toFixed(2)}</span>
+          <span style="font-size: 1.1rem; font-weight: 700;">₹${parseFloat(exp.amount).toFixed(2)}</span>
         </div>
         <div style="font-size: 0.8rem; color: var(--color-text-muted); display: flex; justify-content: space-between; margin-top: 8px;">
           <span>Paid by <strong>${escapeHtml(paidByName)}</strong></span>
@@ -297,6 +337,74 @@ function renderExpenseList(appState, filterCategory = 'ALL', searchQuery = '', s
       </div>
     `;
   }).join('');
+}
+
+function isAnyFilterActive(filterState) {
+  if (!filterState) return false;
+  return Boolean(
+    (filterState.searchQuery && filterState.searchQuery.trim() !== '') ||
+    (filterState.category && filterState.category !== 'ALL') ||
+    (filterState.paidBy && filterState.paidBy !== 'ALL') ||
+    (filterState.dateRange && filterState.dateRange !== 'ALL') ||
+    filterState.startDate ||
+    filterState.endDate ||
+    (filterState.minAmount !== null && filterState.minAmount !== '') ||
+    (filterState.maxAmount !== null && filterState.maxAmount !== '') ||
+    (filterState.splitType && filterState.splitType !== 'ALL') ||
+    (filterState.receipt && filterState.receipt !== 'ALL')
+  );
+}
+
+function renderActiveFilterChips(filterState, memberMap, container, clearBtn) {
+  if (!container) return;
+
+  const chips = [];
+
+  if (filterState.searchQuery && filterState.searchQuery.trim() !== '') {
+    chips.push({ key: 'searchQuery', label: `Search: "${filterState.searchQuery.trim()}"` });
+  }
+  if (filterState.category && filterState.category !== 'ALL') {
+    chips.push({ key: 'category', label: `Category: ${filterState.category}` });
+  }
+  if (filterState.paidBy && filterState.paidBy !== 'ALL') {
+    const name = memberMap[filterState.paidBy] || filterState.paidBy;
+    chips.push({ key: 'paidBy', label: `Paid By: ${name}` });
+  }
+  if (filterState.dateRange && filterState.dateRange !== 'ALL') {
+    if (filterState.dateRange === 'CUSTOM') {
+      const rangeText = `${filterState.startDate || 'Start'} to ${filterState.endDate || 'End'}`;
+      chips.push({ key: 'dateRange', label: `Date: ${rangeText}` });
+    } else {
+      const labels = { TODAY: 'Today', WEEK: 'This Week', MONTH: 'This Month', LAST_MONTH: 'Last Month' };
+      chips.push({ key: 'dateRange', label: `Date: ${labels[filterState.dateRange] || filterState.dateRange}` });
+    }
+  }
+  if ((filterState.minAmount !== null && filterState.minAmount !== '') || (filterState.maxAmount !== null && filterState.maxAmount !== '')) {
+    const minText = filterState.minAmount !== null && filterState.minAmount !== '' ? `₹${filterState.minAmount}` : '₹0';
+    const maxText = filterState.maxAmount !== null && filterState.maxAmount !== '' ? `₹${filterState.maxAmount}` : '∞';
+    chips.push({ key: 'amountRange', label: `Amount: ${minText}–${maxText}` });
+  }
+  if (filterState.splitType && filterState.splitType !== 'ALL') {
+    chips.push({ key: 'splitType', label: `Split: ${filterState.splitType === 'equal' ? 'Equal' : 'Custom'}` });
+  }
+  if (filterState.receipt && filterState.receipt !== 'ALL') {
+    chips.push({ key: 'receipt', label: `Receipt: ${filterState.receipt === 'WITH_RECEIPT' ? 'With Receipt' : 'Without Receipt'}` });
+  }
+
+  if (chips.length === 0) {
+    container.innerHTML = '';
+    if (clearBtn) clearBtn.classList.add('hidden');
+    return;
+  }
+
+  if (clearBtn) clearBtn.classList.remove('hidden');
+
+  container.innerHTML = chips.map(c => `
+    <span class="badge" style="background: var(--color-bg-subtle); border: 1px solid var(--color-surface-border); display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 0.78rem;">
+      <span>${escapeHtml(c.label)}</span>
+      <button class="btn-remove-filter-chip" data-key="${c.key}" style="background: none; border: none; cursor: pointer; color: var(--color-text-muted); font-weight: bold; padding: 0 2px;">✕</button>
+    </span>
+  `).join('');
 }
 
 /**

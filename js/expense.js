@@ -1268,6 +1268,257 @@ function applySimulationToAppState(appState, simState) {
   return { success: true, appliedCount };
 }
 
+/**
+ * Sanitizes template member references against current active group members.
+ * Filters out removed member IDs to prevent crashes.
+ * 
+ * @param {Object} template 
+ * @param {Array<Object>} currentMembers 
+ * @returns {Object} Cleaned template copy
+ */
+function sanitizeTemplateForMemberChanges(template, currentMembers) {
+  if (!template) return null;
+  const memberIds = (currentMembers || []).map(m => m.id);
+
+  const validParticipants = (template.participants || []).filter(id => memberIds.includes(id));
+  const validPayer = memberIds.includes(template.defaultPayer) ? template.defaultPayer : null;
+
+  return {
+    ...template,
+    participants: validParticipants,
+    defaultPayer: validPayer
+  };
+}
+
+/**
+ * Adds a new reusable expense template to appState.templates.
+ * 
+ * @param {Object} appState 
+ * @param {Object} templateData 
+ * @returns {{ success: boolean, error?: string, template?: Object }}
+ */
+function addTemplate(appState, templateData) {
+  if (!Array.isArray(appState.templates)) {
+    appState.templates = [];
+  }
+
+  const { name, title, defaultAmount, category, splitType, participants, customShares, defaultPayer } = templateData;
+
+  const trimmedName = (name || '').trim();
+  if (!trimmedName || trimmedName.length > 50) {
+    return { success: false, error: 'Template name is required (max 50 chars).' };
+  }
+
+  const isDuplicateName = appState.templates.some(
+    t => t.name.toLowerCase() === trimmedName.toLowerCase()
+  );
+  if (isDuplicateName) {
+    return { success: false, error: 'A template with this name already exists.' };
+  }
+
+  const trimmedTitle = (title || '').trim();
+  if (!trimmedTitle || trimmedTitle.length > 50) {
+    return { success: false, error: 'Expense title is required (max 50 chars).' };
+  }
+
+  let parsedAmount = null;
+  if (typeof defaultAmount !== 'undefined' && defaultAmount !== null && defaultAmount !== '') {
+    parsedAmount = parseFloat(defaultAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return { success: false, error: 'Default amount, if provided, must be greater than ₹0.' };
+    }
+    parsedAmount = Math.round(parsedAmount * 100) / 100;
+  }
+
+  if (defaultPayer && !appState.members.some(m => m.id === defaultPayer)) {
+    return { success: false, error: 'Selected default payer is not valid.' };
+  }
+
+  const validParticipants = Array.isArray(participants)
+    ? participants.filter(id => appState.members.some(m => m.id === id))
+    : [];
+
+  const newTemplate = {
+    id: `template_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    name: trimmedName,
+    title: trimmedTitle,
+    defaultAmount: parsedAmount,
+    category: category || 'Other',
+    splitType: splitType || 'equal',
+    participants: [...validParticipants],
+    customShares: splitType === 'custom' ? { ...customShares } : {},
+    defaultPayer: defaultPayer || null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  appState.templates.unshift(newTemplate);
+
+  logActivity(appState, {
+    type: 'template_created',
+    category: 'expenses',
+    message: `Created expense template "${trimmedName}"`,
+    relatedEntityId: newTemplate.id
+  });
+
+  storeModule.saveData(appState);
+  return { success: true, template: newTemplate };
+}
+
+/**
+ * Edits an existing expense template configuration.
+ * Does NOT modify expenses created in the past.
+ * 
+ * @param {Object} appState 
+ * @param {string} templateId 
+ * @param {Object} updatedData 
+ * @returns {{ success: boolean, error?: string, template?: Object }}
+ */
+function editTemplate(appState, templateId, updatedData) {
+  if (!Array.isArray(appState.templates)) {
+    return { success: false, error: 'Template not found.' };
+  }
+
+  const index = appState.templates.findIndex(t => t.id === templateId);
+  if (index === -1) {
+    return { success: false, error: 'Template not found.' };
+  }
+
+  const { name, title, defaultAmount, category, splitType, participants, customShares, defaultPayer } = updatedData;
+
+  const trimmedName = (name || '').trim();
+  if (!trimmedName || trimmedName.length > 50) {
+    return { success: false, error: 'Template name is required (max 50 chars).' };
+  }
+
+  const isDuplicateName = appState.templates.some(
+    t => t.id !== templateId && t.name.toLowerCase() === trimmedName.toLowerCase()
+  );
+  if (isDuplicateName) {
+    return { success: false, error: 'A template with this name already exists.' };
+  }
+
+  const trimmedTitle = (title || '').trim();
+  if (!trimmedTitle || trimmedTitle.length > 50) {
+    return { success: false, error: 'Expense title is required (max 50 chars).' };
+  }
+
+  let parsedAmount = null;
+  if (typeof defaultAmount !== 'undefined' && defaultAmount !== null && defaultAmount !== '') {
+    parsedAmount = parseFloat(defaultAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return { success: false, error: 'Default amount, if provided, must be greater than ₹0.' };
+    }
+    parsedAmount = Math.round(parsedAmount * 100) / 100;
+  }
+
+  if (defaultPayer && !appState.members.some(m => m.id === defaultPayer)) {
+    return { success: false, error: 'Selected default payer is not valid.' };
+  }
+
+  const validParticipants = Array.isArray(participants)
+    ? participants.filter(id => appState.members.some(m => m.id === id))
+    : [];
+
+  const existing = appState.templates[index];
+
+  appState.templates[index] = {
+    ...existing,
+    name: trimmedName,
+    title: trimmedTitle,
+    defaultAmount: parsedAmount,
+    category: category || 'Other',
+    splitType: splitType || 'equal',
+    participants: [...validParticipants],
+    customShares: splitType === 'custom' ? { ...customShares } : {},
+    defaultPayer: defaultPayer || null,
+    updatedAt: new Date().toISOString()
+  };
+
+  logActivity(appState, {
+    type: 'template_edited',
+    category: 'expenses',
+    message: `Edited expense template "${trimmedName}"`,
+    relatedEntityId: templateId
+  });
+
+  storeModule.saveData(appState);
+  return { success: true, template: appState.templates[index] };
+}
+
+/**
+ * Deletes a reusable expense template.
+ * Does NOT delete any existing expenses created from this template.
+ * 
+ * @param {Object} appState 
+ * @param {string} templateId 
+ * @returns {{ success: boolean }}
+ */
+function deleteTemplate(appState, templateId) {
+  if (!Array.isArray(appState.templates)) {
+    return { success: true };
+  }
+
+  const target = appState.templates.find(t => t.id === templateId);
+  const name = target ? target.name : 'Template';
+
+  appState.templates = appState.templates.filter(t => t.id !== templateId);
+
+  logActivity(appState, {
+    type: 'template_deleted',
+    category: 'expenses',
+    message: `Deleted expense template "${name}"`,
+    relatedEntityId: templateId
+  });
+
+  storeModule.saveData(appState);
+  return { success: true };
+}
+
+/**
+ * Creates a duplicate copy of an existing template with a unique name.
+ * 
+ * @param {Object} appState 
+ * @param {string} templateId 
+ * @returns {{ success: boolean, error?: string, template?: Object }}
+ */
+function duplicateTemplate(appState, templateId) {
+  if (!Array.isArray(appState.templates)) {
+    return { success: false, error: 'Template not found.' };
+  }
+
+  const source = appState.templates.find(t => t.id === templateId);
+  if (!source) {
+    return { success: false, error: 'Source template not found.' };
+  }
+
+  let dupName = `${source.name} (Copy)`;
+  let counter = 2;
+  while (appState.templates.some(t => t.name.toLowerCase() === dupName.toLowerCase())) {
+    dupName = `${source.name} (Copy ${counter++})`;
+  }
+
+  const duplicated = {
+    ...cloneState(source),
+    id: `template_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    name: dupName,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  appState.templates.unshift(duplicated);
+
+  logActivity(appState, {
+    type: 'template_created',
+    category: 'expenses',
+    message: `Duplicated template "${source.name}" as "${dupName}"`,
+    relatedEntityId: duplicated.id
+  });
+
+  storeModule.saveData(appState);
+  return { success: true, template: duplicated };
+}
+
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -1299,7 +1550,13 @@ if (typeof module !== 'undefined' && module.exports) {
     simulateRemoveExpense,
     removeSimulationChange,
     resetSimulationState,
-    applySimulationToAppState
+    applySimulationToAppState,
+    sanitizeTemplateForMemberChanges,
+    addTemplate,
+    editTemplate,
+    deleteTemplate,
+    duplicateTemplate
   };
 }
+
 

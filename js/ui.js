@@ -145,20 +145,23 @@ function renderHeader(appState) {
   }
 
   // Update Undo & Redo controls state
-  updateUndoRedoUI();
+  updateUndoRedoUI(appState);
+  renderGroupSwitcher(appState);
 }
 
 /**
  * Updates Undo and Redo header button states and tooltips based on history stack.
  * 
- * @param {Object} [historyInfo] 
+ * @param {Object} [appStateOrInfo] 
  */
-function updateUndoRedoUI(historyInfo) {
+function updateUndoRedoUI(appStateOrInfo) {
   const btnUndo = document.getElementById('btn-undo');
   const btnRedo = document.getElementById('btn-redo');
 
   const historyManager = typeof window !== 'undefined' && window.getHistoryInfo ? window : (typeof require !== 'undefined' ? require('./history.js') : {});
-  const info = historyInfo || (historyManager.getHistoryInfo ? historyManager.getHistoryInfo() : { canUndo: false, canRedo: false });
+  const info = (appStateOrInfo && typeof appStateOrInfo.canUndo !== 'undefined')
+    ? appStateOrInfo
+    : (historyManager.getHistoryInfo ? historyManager.getHistoryInfo(appStateOrInfo) : { canUndo: false, canRedo: false });
 
   if (btnUndo) {
     if (info.canUndo) {
@@ -179,6 +182,96 @@ function updateUndoRedoUI(historyInfo) {
       btnRedo.title = 'Nothing to redo (Ctrl+Y)';
     }
   }
+}
+
+/**
+ * Renders the visible Group Switcher dropdown control.
+ * @param {Object} appState 
+ */
+function renderGroupSwitcher(appState) {
+  const container = document.getElementById('group-switcher-container');
+  if (!container) return;
+
+  const groups = appState.groups || [];
+
+  if (groups.length === 0) {
+    container.innerHTML = `
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-header-create-group">
+        + Create Group
+      </button>
+    `;
+    return;
+  }
+
+  let optionsHtml = groups.map(g => {
+    const isSelected = g.id === appState.activeGroupId;
+    return `<option value="${g.id}" ${isSelected ? 'selected' : ''}>🌴 ${escapeHtml(g.name)}</option>`;
+  }).join('');
+
+  optionsHtml += `
+    <option value="__action_create_group__">+ Create New Group...</option>
+    <option value="__action_manage_groups__">⚙ Manage Groups (${groups.length})...</option>
+  `;
+
+  container.innerHTML = `
+    <div class="group-switcher-wrapper" style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.85rem; font-weight: 500; color: var(--color-text-muted);">Workspace:</span>
+      <select id="select-active-group" class="group-switcher-select" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--color-surface-border); background: var(--color-surface); color: var(--color-text-main); font-size: 0.9rem; font-weight: 600; cursor: pointer;">
+        ${optionsHtml}
+      </select>
+    </div>
+  `;
+}
+
+/**
+ * Renders list of group workspace cards inside Manage Groups modal.
+ * @param {Object} appState 
+ */
+function renderManageGroupsModal(appState) {
+  const container = document.getElementById('manage-groups-cards-list');
+  if (!container) return;
+
+  const groups = appState.groups || [];
+  if (groups.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 2rem; color: var(--color-text-muted);">
+        <p>No expense groups available.</p>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-manage-create-first-group" style="margin-top: 10px;">
+          + Create New Group
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  const expModule = typeof window !== 'undefined' && window.getGroupMetrics ? window : (typeof require !== 'undefined' ? require('./expense.js') : {});
+
+  container.innerHTML = groups.map(g => {
+    const isActive = g.id === appState.activeGroupId;
+    const metrics = expModule.getGroupMetrics ? expModule.getGroupMetrics(g) : { memberCount: 0, expenseCount: 0, totalSpent: 0 };
+    
+    return `
+      <div class="group-card ${isActive ? 'active-group-card' : ''}" style="border: 1px solid var(--color-surface-border); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; background: var(--color-surface);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h4 style="margin: 0; font-size: 1.1rem; font-weight: 600;">${escapeHtml(g.name)}</h4>
+            ${isActive ? '<span class="badge badge-success" style="background: rgba(46, 204, 113, 0.15); color: #27ae60; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Active</span>' : ''}
+          </div>
+          <div style="display: flex; gap: 6px;">
+            ${!isActive ? `<button type="button" class="btn btn-sm btn-secondary btn-switch-group" data-id="${g.id}">Open</button>` : ''}
+            <button type="button" class="btn btn-sm btn-secondary btn-open-rename-group" data-id="${g.id}" data-name="${escapeHtml(g.name)}">Rename</button>
+            <button type="button" class="btn btn-sm btn-danger btn-open-delete-group" data-id="${g.id}" data-name="${escapeHtml(g.name)}">Delete</button>
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85rem; color: var(--color-text-muted);">
+          <span>👥 <strong>${metrics.memberCount}</strong> Members</span>
+          <span>💳 <strong>${metrics.expenseCount}</strong> Expenses</span>
+          <span>💰 <strong>₹${metrics.totalSpent.toFixed(2)}</strong> Spent</span>
+          ${metrics.budget !== null ? `<span>🎯 Budget: ₹${metrics.budget.toFixed(2)}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 /**
@@ -1827,6 +1920,8 @@ if (typeof module !== 'undefined' && module.exports) {
     renderExportReportModal,
     renderPrintReport,
     updateUndoRedoUI,
+    renderGroupSwitcher,
+    renderManageGroupsModal,
     escapeHtml
   };
 }

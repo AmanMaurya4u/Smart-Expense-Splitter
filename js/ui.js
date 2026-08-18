@@ -1168,11 +1168,8 @@ function renderRecurringExpensesList(appState) {
           <button class="btn btn-secondary btn-sm btn-edit-recurring" data-id="${item.id}">Edit</button>
           <button class="btn btn-danger btn-sm btn-delete-recurring" data-id="${item.id}">Delete</button>
         </div>
-      </div>
     `;
   }).join('');
-}
-
 }
 
 /**

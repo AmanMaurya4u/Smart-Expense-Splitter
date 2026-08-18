@@ -172,6 +172,7 @@ function renderSetupMembersList() {
 /**
  * Event Listener Wiring
  */
+function bindEventListeners() {
   // Undo & Redo Handlers
   function handleUndoAction() {
     const res = historyManager.performUndo ? historyManager.performUndo(appState) : { success: false };
@@ -2027,7 +2028,6 @@ function handleRecurringExpenseFormSubmit() {
     return;
   }
 
-  const wasEditing = editingRecurringId;
   editingRecurringId = null;
   ui.closeModal('modal-recurring-expense');
   renderFullDashboard();
@@ -2415,7 +2415,6 @@ function handleTemplateFormSubmit() {
     return;
   }
 
-  const wasEditing = editingTemplateId;
   editingTemplateId = null;
   ui.closeModal('modal-template');
   renderFullDashboard();

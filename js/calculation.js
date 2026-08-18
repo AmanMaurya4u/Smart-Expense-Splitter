@@ -814,6 +814,78 @@ function validateReceiptFile(file, maxSizeBytes = 5 * 1024 * 1024) {
 }
 
 /**
+ * Compares member balances before and after simulation.
+ * 
+ * @param {Record<string, Object>} beforeBalances 
+ * @param {Record<string, Object>} afterBalances 
+ * @returns {Array<{ memberId: string, name: string, beforePaid: number, afterPaid: number, beforeShare: number, afterShare: number, beforeBalance: number, afterBalance: number, balanceDiff: number, isImproved: boolean, isWorsened: boolean }>}
+ */
+function compareBalances(beforeBalances, afterBalances) {
+  const allIds = new Set([
+    ...Object.keys(beforeBalances || {}),
+    ...Object.keys(afterBalances || {})
+  ]);
+
+  const list = [];
+  allIds.forEach(id => {
+    const before = beforeBalances[id] || { name: 'Unknown', paid: 0, share: 0, balance: 0 };
+    const after = afterBalances[id] || { name: 'Unknown', paid: 0, share: 0, balance: 0 };
+    const name = after.name || before.name || 'Member';
+
+    const beforeBal = Math.round((before.balance || 0) * 100) / 100;
+    const afterBal = Math.round((after.balance || 0) * 100) / 100;
+    const balanceDiff = Math.round((afterBal - beforeBal) * 100) / 100;
+
+    list.push({
+      memberId: id,
+      name,
+      beforePaid: before.paid || 0,
+      afterPaid: after.paid || 0,
+      beforeShare: before.share || 0,
+      afterShare: after.share || 0,
+      beforeBalance: beforeBal,
+      afterBalance: afterBal,
+      balanceDiff,
+      isImproved: balanceDiff > 0,
+      isWorsened: balanceDiff < 0
+    });
+  });
+
+  return list;
+}
+
+/**
+ * Compares budget statistics before and after simulation.
+ * 
+ * @param {Object} beforeStats 
+ * @param {Object} afterStats 
+ * @returns {{ beforeSpent: number, afterSpent: number, spentDiff: number, beforePercentage: number, afterPercentage: number, percentageDiff: number, isNewlyExceeded: boolean, isNewlyWarning: boolean }}
+ */
+function compareBudgetStats(beforeStats, afterStats) {
+  const beforeSpent = beforeStats ? (beforeStats.totalSpent || 0) : 0;
+  const afterSpent = afterStats ? (afterStats.totalSpent || 0) : 0;
+  const spentDiff = Math.round((afterSpent - beforeSpent) * 100) / 100;
+
+  const beforePct = beforeStats ? (beforeStats.percentage || 0) : 0;
+  const afterPct = afterStats ? (afterStats.percentage || 0) : 0;
+  const percentageDiff = Math.round((afterPct - beforePct) * 10) / 10;
+
+  const isNewlyExceeded = Boolean(!beforeStats?.isExceeded && afterStats?.isExceeded);
+  const isNewlyWarning = Boolean(!beforeStats?.isWarning && !beforeStats?.isExceeded && afterStats?.isWarning);
+
+  return {
+    beforeSpent,
+    afterSpent,
+    spentDiff,
+    beforePercentage: beforePct,
+    afterPercentage: afterPct,
+    percentageDiff,
+    isNewlyExceeded,
+    isNewlyWarning
+  };
+}
+
+/**
  * Compresses receipt image and resizes max dimension using HTML5 Canvas.
  * 
  * @param {File|Object} file 
@@ -897,6 +969,8 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateSpendingChange,
     generateSmartInsights,
     validateReceiptFile,
-    compressReceiptImage
+    compressReceiptImage,
+    compareBalances,
+    compareBudgetStats
   };
 }

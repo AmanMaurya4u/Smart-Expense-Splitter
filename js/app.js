@@ -33,10 +33,20 @@ let deletingTemplateId = null;
 // Receipt upload transient state
 let currentExpenseReceipt = null;
 
-// Filter state
-let currentFilterCategory = 'ALL';
-let currentSearchQuery = '';
-let currentSortBy = 'newest';
+// Comprehensive Filter state object
+let currentFilterState = {
+  searchQuery: '',
+  category: 'ALL',
+  paidBy: 'ALL',
+  dateRange: 'ALL',
+  startDate: null,
+  endDate: null,
+  minAmount: null,
+  maxAmount: null,
+  splitType: 'ALL',
+  receipt: 'ALL',
+  sortBy: 'newest'
+};
 let currentActivityFilterCategory = 'ALL';
 let searchDebounceTimer = null;
 
@@ -86,7 +96,7 @@ function renderFullDashboard() {
   ui.renderRecurringDueWidget(appState);
   ui.renderBudgetWidget(appState);
   ui.renderSummaryCards(appState);
-  ui.renderExpenseList(appState, currentFilterCategory, currentSearchQuery, currentSortBy);
+  ui.renderExpenseList(appState, currentFilterState);
   ui.renderRecurringExpensesList(appState);
   ui.renderTemplatesList(appState);
   ui.renderMembersList(appState);
@@ -327,12 +337,100 @@ function bindEventListeners() {
   }
 
   // Category Filter
+  // Filter & Search Controls Wiring
   const filterCatSelect = document.getElementById('select-filter-category');
   if (filterCatSelect) {
     filterCatSelect.addEventListener('change', (e) => {
-      currentFilterCategory = e.target.value;
-      ui.renderExpenseList(appState, currentFilterCategory, currentSearchQuery, currentSortBy);
+      currentFilterState.category = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
     });
+  }
+
+  const filterPaidBySelect = document.getElementById('select-filter-paid-by');
+  if (filterPaidBySelect) {
+    filterPaidBySelect.addEventListener('change', (e) => {
+      currentFilterState.paidBy = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  const filterDateSelect = document.getElementById('select-filter-date');
+  if (filterDateSelect) {
+    filterDateSelect.addEventListener('change', (e) => {
+      currentFilterState.dateRange = e.target.value;
+      const customContainer = document.getElementById('custom-date-range-container');
+      if (customContainer) {
+        if (e.target.value === 'CUSTOM') {
+          customContainer.classList.remove('hidden');
+        } else {
+          customContainer.classList.add('hidden');
+        }
+      }
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  const filterStartDateInput = document.getElementById('input-filter-start-date');
+  if (filterStartDateInput) {
+    filterStartDateInput.addEventListener('change', (e) => {
+      currentFilterState.startDate = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  const filterEndDateInput = document.getElementById('input-filter-end-date');
+  if (filterEndDateInput) {
+    filterEndDateInput.addEventListener('change', (e) => {
+      currentFilterState.endDate = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  const filterMinAmountInput = document.getElementById('input-filter-min-amount');
+  if (filterMinAmountInput) {
+    filterMinAmountInput.addEventListener('input', (e) => {
+      currentFilterState.minAmount = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  const filterMaxAmountInput = document.getElementById('input-filter-max-amount');
+  if (filterMaxAmountInput) {
+    filterMaxAmountInput.addEventListener('input', (e) => {
+      currentFilterState.maxAmount = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  const filterSplitTypeSelect = document.getElementById('select-filter-split-type');
+  if (filterSplitTypeSelect) {
+    filterSplitTypeSelect.addEventListener('change', (e) => {
+      currentFilterState.splitType = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  const filterReceiptSelect = document.getElementById('select-filter-receipt');
+  if (filterReceiptSelect) {
+    filterReceiptSelect.addEventListener('change', (e) => {
+      currentFilterState.receipt = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
+    });
+  }
+
+  // Toggle Advanced Filters Collapsible Panel
+  const btnToggleAdvFilters = document.getElementById('btn-toggle-advanced-filters');
+  if (btnToggleAdvFilters) {
+    btnToggleAdvFilters.addEventListener('click', () => {
+      const panel = document.getElementById('advanced-filters-panel');
+      if (panel) panel.classList.toggle('hidden');
+    });
+  }
+
+  // Clear Filters Action Button
+  const btnClearFilters = document.getElementById('btn-clear-filters');
+  if (btnClearFilters) {
+    btnClearFilters.addEventListener('click', () => resetAllFilters());
   }
 
   // Search Input (Debounced)
@@ -341,9 +439,9 @@ function bindEventListeners() {
     searchInput.addEventListener('input', (e) => {
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
-        currentSearchQuery = e.target.value;
-        ui.renderExpenseList(appState, currentFilterCategory, currentSearchQuery, currentSortBy);
-      }, 300);
+        currentFilterState.searchQuery = e.target.value;
+        ui.renderExpenseList(appState, currentFilterState);
+      }, 250);
     });
   }
 
@@ -351,8 +449,8 @@ function bindEventListeners() {
   const sortSelect = document.getElementById('select-sort-expense');
   if (sortSelect) {
     sortSelect.addEventListener('change', (e) => {
-      currentSortBy = e.target.value;
-      ui.renderExpenseList(appState, currentFilterCategory, currentSearchQuery, currentSortBy);
+      currentFilterState.sortBy = e.target.value;
+      ui.renderExpenseList(appState, currentFilterState);
     });
   }
 
@@ -433,6 +531,9 @@ function bindEventListeners() {
       if (targetExp && targetExp.receipt && targetExp.receipt.data) {
         ui.openReceiptLightboxModal(targetExp.receipt, targetExp.title);
       }
+    } else if (e.target.classList.contains('btn-remove-filter-chip')) {
+      const key = e.target.getAttribute('data-key');
+      removeSingleFilter(key);
     } else if (e.target.classList.contains('btn-use-template')) {
       const id = e.target.getAttribute('data-id');
       handleUseTemplateAction(id);
@@ -1949,4 +2050,86 @@ function renderCustomSharesInputsWithValues(existingShares = {}) {
       </div>
     </div>
   `).join('');
+}
+
+function resetAllFilters() {
+  currentFilterState = {
+    searchQuery: '',
+    category: 'ALL',
+    paidBy: 'ALL',
+    dateRange: 'ALL',
+    startDate: null,
+    endDate: null,
+    minAmount: null,
+    maxAmount: null,
+    splitType: 'ALL',
+    receipt: 'ALL',
+    sortBy: 'newest'
+  };
+
+  const inputs = {
+    'input-search-expense': '',
+    'select-filter-category': 'ALL',
+    'select-filter-paid-by': 'ALL',
+    'select-filter-date': 'ALL',
+    'input-filter-start-date': '',
+    'input-filter-end-date': '',
+    'input-filter-min-amount': '',
+    'input-filter-max-amount': '',
+    'select-filter-split-type': 'ALL',
+    'select-filter-receipt': 'ALL',
+    'select-sort-expense': 'newest'
+  };
+
+  Object.entries(inputs).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+
+  const customDateContainer = document.getElementById('custom-date-range-container');
+  if (customDateContainer) customDateContainer.classList.add('hidden');
+
+  ui.renderExpenseList(appState, currentFilterState);
+  ui.showToast('All search & filter criteria cleared', 'info');
+}
+
+function removeSingleFilter(key) {
+  if (key === 'searchQuery') {
+    currentFilterState.searchQuery = '';
+    const el = document.getElementById('input-search-expense');
+    if (el) el.value = '';
+  } else if (key === 'category') {
+    currentFilterState.category = 'ALL';
+    const el = document.getElementById('select-filter-category');
+    if (el) el.value = 'ALL';
+  } else if (key === 'paidBy') {
+    currentFilterState.paidBy = 'ALL';
+    const el = document.getElementById('select-filter-paid-by');
+    if (el) el.value = 'ALL';
+  } else if (key === 'dateRange') {
+    currentFilterState.dateRange = 'ALL';
+    currentFilterState.startDate = null;
+    currentFilterState.endDate = null;
+    const el = document.getElementById('select-filter-date');
+    if (el) el.value = 'ALL';
+    const customDateContainer = document.getElementById('custom-date-range-container');
+    if (customDateContainer) customDateContainer.classList.add('hidden');
+  } else if (key === 'amountRange') {
+    currentFilterState.minAmount = null;
+    currentFilterState.maxAmount = null;
+    const minEl = document.getElementById('input-filter-min-amount');
+    const maxEl = document.getElementById('input-filter-max-amount');
+    if (minEl) minEl.value = '';
+    if (maxEl) maxEl.value = '';
+  } else if (key === 'splitType') {
+    currentFilterState.splitType = 'ALL';
+    const el = document.getElementById('select-filter-split-type');
+    if (el) el.value = 'ALL';
+  } else if (key === 'receipt') {
+    currentFilterState.receipt = 'ALL';
+    const el = document.getElementById('select-filter-receipt');
+    if (el) el.value = 'ALL';
+  }
+
+  ui.renderExpenseList(appState, currentFilterState);
 }

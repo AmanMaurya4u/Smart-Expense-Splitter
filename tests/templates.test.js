@@ -159,7 +159,7 @@ assert(settlements.length > 0, 'Settlement suggestions generated after expense c
 
 // 8. Budget updates
 const budget = getBudgetStats(appState.group, appState.expenses);
-assert(budget.spent === 1500, 'Budget spent updated to ₹1,500');
+assert(budget.totalSpent === 1500, 'Budget spent updated to ₹1,500');
 
 // 9. Analytics updates
 assert(calculateTotalSpending(appState.expenses) === 1500, 'Total spending analytics is ₹1,500');

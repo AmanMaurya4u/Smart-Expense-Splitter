@@ -185,10 +185,10 @@
       <!-- Tab Content 1: Expenses -->
       <div id="tab-expenses">
         <!-- Filter & Search Bar -->
-        <div class="filter-bar">
-          <div class="search-input-wrap">
+        <div class="filter-bar" style="display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3);">
+          <div class="search-input-wrap" style="flex: 1; min-width: 220px;">
             <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="input-search-expense" class="form-control" placeholder="Search expenses by title...">
+            <input type="text" id="input-search-expense" class="form-control" placeholder="Search title, member, category...">
           </div>
 
           <select id="select-filter-category" class="form-control" style="width: auto;">
@@ -201,11 +201,85 @@
             <option value="Other">Other</option>
           </select>
 
-          <select id="select-sort-expense" class="form-control" style="width: auto;">
-            <option value="newest">Sort by Newest</option>
-            <option value="amount">Sort by Amount (High → Low)</option>
-            <option value="category">Sort by Category</option>
+          <select id="select-filter-paid-by" class="form-control" style="width: auto;">
+            <option value="ALL">All Members</option>
+            <!-- Dynamic Member Options -->
           </select>
+
+          <select id="select-filter-date" class="form-control" style="width: auto;">
+            <option value="ALL">All Time</option>
+            <option value="TODAY">Today</option>
+            <option value="WEEK">This Week</option>
+            <option value="MONTH">This Month</option>
+            <option value="LAST_MONTH">Last Month</option>
+            <option value="CUSTOM">Custom Date Range...</option>
+          </select>
+
+          <div id="custom-date-range-container" class="hidden" style="display: flex; gap: 4px; align-items: center;">
+            <input type="date" id="input-filter-start-date" class="form-control" style="width: 135px; height: 42px; font-size: 0.8rem;">
+            <span style="font-size: 0.8rem; color: var(--color-text-muted);">to</span>
+            <input type="date" id="input-filter-end-date" class="form-control" style="width: 135px; height: 42px; font-size: 0.8rem;">
+          </div>
+
+          <select id="select-sort-expense" class="form-control" style="width: auto;">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="amount_desc">Highest Amount</option>
+            <option value="amount_asc">Lowest Amount</option>
+            <option value="title_asc">Title (A-Z)</option>
+            <option value="title_desc">Title (Z-A)</option>
+          </select>
+
+          <button id="btn-toggle-advanced-filters" class="btn btn-secondary" style="min-height: 42px;">
+            ⚙️ Filters
+          </button>
+        </div>
+
+        <!-- Advanced Collapsible Filter Options Panel -->
+        <div id="advanced-filters-panel" class="card hidden" style="margin-bottom: var(--space-4); padding: 14px; background: var(--color-bg-subtle);">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+            <div>
+              <label for="input-filter-min-amount" style="font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); display: block; margin-bottom: 4px;">Min Amount (₹)</label>
+              <input type="number" id="input-filter-min-amount" class="form-control" placeholder="Min ₹" min="0" step="0.01" style="min-height: 36px;">
+            </div>
+            <div>
+              <label for="input-filter-max-amount" style="font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); display: block; margin-bottom: 4px;">Max Amount (₹)</label>
+              <input type="number" id="input-filter-max-amount" class="form-control" placeholder="Max ₹" min="0" step="0.01" style="min-height: 36px;">
+            </div>
+            <div>
+              <label for="select-filter-split-type" style="font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); display: block; margin-bottom: 4px;">Split Type</label>
+              <select id="select-filter-split-type" class="form-control" style="min-height: 36px;">
+                <option value="ALL">All Split Types</option>
+                <option value="equal">Equal Split</option>
+                <option value="custom">Custom Split</option>
+              </select>
+            </div>
+            <div>
+              <label for="select-filter-receipt" style="font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); display: block; margin-bottom: 4px;">Receipt</label>
+              <select id="select-filter-receipt" class="form-control" style="min-height: 36px;">
+                <option value="ALL">All Expenses</option>
+                <option value="WITH_RECEIPT">With Receipt</option>
+                <option value="WITHOUT_RECEIPT">Without Receipt</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Summary Bar & Active Chips -->
+        <div id="filter-summary-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span id="filter-results-count" style="font-size: 0.9rem; font-weight: 600; color: var(--color-text-main);">Showing 0 expenses</span>
+            <span id="filter-total-amount-badge" class="badge" style="font-size: 0.8rem; background: var(--color-primary-light); color: var(--color-primary); font-weight: 600;">Filtered Total: ₹0.00</span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div id="active-filter-chips" style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <!-- Dynamic Filter Chips -->
+            </div>
+            <button id="btn-clear-filters" class="btn btn-secondary btn-sm hidden" style="color: var(--color-danger-text); border-color: rgba(239, 68, 68, 0.3);">
+              Clear Filters
+            </button>
+          </div>
         </div>
 
         <!-- Desktop Expenses Table -->

@@ -918,6 +918,356 @@ function convertRecurringToExpense(appState, recurringId) {
   return { success: true, expense: expRes.expense, recurring: item };
 }
 
+/**
+ * Creates a deep copy of object using structuredClone with JSON fallback.
+ */
+function cloneState(state) {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(state);
+    } catch (e) {
+      // Fallback
+    }
+  }
+  return JSON.parse(JSON.stringify(state));
+}
+
+/**
+ * Initializes temporary simulation sandbox state from current appState.
+ * 
+ * @param {Object} appState 
+ * @returns {Object} Temporary simulation state container
+ */
+function initSimulationState(appState) {
+  const simState = cloneState(appState);
+  simState.changes = [];
+  recalculateGroupSettlements(simState);
+  return simState;
+}
+
+/**
+ * Simulates a hypothetical payment from member to member without mutating real data.
+ * 
+ * @param {Object} simState 
+ * @param {string} fromId 
+ * @param {string} toId 
+ * @param {number|string} amount 
+ * @returns {{ success: boolean, error?: string }}
+ */
+function simulatePayment(simState, fromId, toId, amount) {
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return { success: false, error: 'Payment amount must be greater than ₹0.' };
+  }
+
+  if (!fromId || !toId || fromId === toId) {
+    return { success: false, error: 'Payer and receiver must be different members.' };
+  }
+
+  const fromMember = simState.members.find(m => m.id === fromId);
+  const toMember = simState.members.find(m => m.id === toId);
+
+  if (!fromMember || !toMember) {
+    return { success: false, error: 'Selected payer or receiver does not exist.' };
+  }
+
+  // Find settlement matching from -> to
+  let settlement = (simState.settlements || []).find(s => s.from === fromId && s.to === toId);
+
+  const currentStats = settlement ? calcModule.getSettlementPaymentStats(settlement) : null;
+  const remAmount = currentStats ? currentStats.remainingAmount : 0;
+
+  if (settlement && numAmount > remAmount + 0.01) {
+    return {
+      success: false,
+      error: `Payment amount cannot be greater than simulated remaining amount (₹${remAmount.toFixed(2)}).`
+    };
+  }
+
+  if (!settlement) {
+    settlement = {
+      id: `sim_settlement_${Date.now()}`,
+      from: fromId,
+      to: toId,
+      amount: numAmount,
+      status: 'pending',
+      payments: []
+    };
+    if (!Array.isArray(simState.settlements)) simState.settlements = [];
+    simState.settlements.push(settlement);
+  }
+
+  if (!Array.isArray(settlement.payments)) {
+    settlement.payments = [];
+  }
+
+  settlement.payments.push({
+    id: `sim_pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    amount: Math.round(numAmount * 100) / 100,
+    paymentMethod: 'UPI',
+    note: 'Simulated Payment',
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  const updatedStats = calcModule.getSettlementPaymentStats(settlement);
+  settlement.status = updatedStats.status;
+
+  const changeId = `change_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  simState.changes.push({
+    id: changeId,
+    type: 'payment',
+    description: `${fromMember.name} pays ${toMember.name} ₹${numAmount.toFixed(2)}`,
+    data: {
+      fromId,
+      toId,
+      amount: numAmount,
+      settlementId: settlement.id
+    }
+  });
+
+  return { success: true };
+}
+
+/**
+ * Simulates adding a hypothetical expense without modifying real data.
+ * 
+ * @param {Object} simState 
+ * @param {Object} expenseData 
+ * @returns {{ success: boolean, error?: string }}
+ */
+function simulateAddExpense(simState, expenseData) {
+  const { title, amount, category, paidBy, splitType, participants, customShares } = expenseData;
+
+  if (!title || title.trim().length === 0) {
+    return { success: false, error: 'Please enter an expense title.' };
+  }
+
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return { success: false, error: 'Expense amount must be greater than ₹0.' };
+  }
+
+  if (!paidBy || !simState.members.some(m => m.id === paidBy)) {
+    return { success: false, error: 'Please select a valid member who paid.' };
+  }
+
+  if (!participants || !Array.isArray(participants) || participants.length === 0) {
+    return { success: false, error: 'Please select at least one participant.' };
+  }
+
+  if (splitType === 'custom') {
+    const customValidation = calcModule.calculateCustomSplit(numAmount, customShares);
+    if (!customValidation.isValid) {
+      return {
+        success: false,
+        error: `Custom shares sum (₹${customValidation.sum}) must equal total expense amount (₹${numAmount}).`
+      };
+    }
+  }
+
+  const payerObj = simState.members.find(m => m.id === paidBy);
+  const paidByName = payerObj ? payerObj.name : 'Someone';
+
+  const newExpense = {
+    id: `sim_exp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    title: title.trim(),
+    amount: Math.round(numAmount * 100) / 100,
+    category: category || 'Other',
+    paidBy,
+    splitType: splitType || 'equal',
+    participants: [...participants],
+    customShares: splitType === 'custom' ? { ...customShares } : {},
+    date: new Date().toISOString().split('T')[0],
+    receipt: null,
+    createdAt: new Date().toISOString()
+  };
+
+  simState.expenses.unshift(newExpense);
+  recalculateGroupSettlements(simState);
+
+  const changeId = `change_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  simState.changes.push({
+    id: changeId,
+    type: 'add_expense',
+    description: `Add "${newExpense.title}" (₹${newExpense.amount.toFixed(2)}) paid by ${paidByName}`,
+    data: expenseData
+  });
+
+  return { success: true };
+}
+
+/**
+ * Simulates modifying an existing expense's amount temporarily.
+ * 
+ * @param {Object} simState 
+ * @param {string} expenseId 
+ * @param {number|string} newAmount 
+ * @returns {{ success: boolean, error?: string }}
+ */
+function simulateEditExpenseAmount(simState, expenseId, newAmount) {
+  const targetExp = simState.expenses.find(e => e.id === expenseId);
+  if (!targetExp) {
+    return { success: false, error: 'Selected expense not found.' };
+  }
+
+  const numAmount = parseFloat(newAmount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return { success: false, error: 'New expense amount must be greater than ₹0.' };
+  }
+
+  const oldAmount = targetExp.amount;
+
+  targetExp.amount = Math.round(numAmount * 100) / 100;
+
+  if (targetExp.splitType === 'custom' && targetExp.customShares) {
+    const oldSum = Object.values(targetExp.customShares).reduce((acc, v) => acc + (parseFloat(v) || 0), 0);
+    if (oldSum > 0) {
+      const scale = numAmount / oldSum;
+      const newCustomShares = {};
+      Object.keys(targetExp.customShares).forEach(k => {
+        newCustomShares[k] = Math.round((parseFloat(targetExp.customShares[k]) * scale) * 100) / 100;
+      });
+      targetExp.customShares = newCustomShares;
+    }
+  }
+
+  recalculateGroupSettlements(simState);
+
+  const changeId = `change_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  simState.changes.push({
+    id: changeId,
+    type: 'edit_expense',
+    description: `Change "${targetExp.title}" amount: ₹${oldAmount.toFixed(2)} → ₹${targetExp.amount.toFixed(2)}`,
+    data: {
+      expenseId,
+      oldAmount,
+      newAmount: targetExp.amount
+    }
+  });
+
+  return { success: true };
+}
+
+/**
+ * Simulates removing an existing expense temporarily.
+ * 
+ * @param {Object} simState 
+ * @param {string} expenseId 
+ * @returns {{ success: boolean, error?: string }}
+ */
+function simulateRemoveExpense(simState, expenseId) {
+  const targetExp = simState.expenses.find(e => e.id === expenseId);
+  if (!targetExp) {
+    return { success: false, error: 'Selected expense not found.' };
+  }
+
+  simState.expenses = simState.expenses.filter(e => e.id !== expenseId);
+  recalculateGroupSettlements(simState);
+
+  const changeId = `change_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  simState.changes.push({
+    id: changeId,
+    type: 'remove_expense',
+    description: `Remove expense "${targetExp.title}" (₹${targetExp.amount.toFixed(2)})`,
+    data: {
+      expenseId,
+      title: targetExp.title,
+      amount: targetExp.amount
+    }
+  });
+
+  return { success: true };
+}
+
+/**
+ * Reverts an individual simulation change action and recalculates sandbox state.
+ * 
+ * @param {Object} simState 
+ * @param {Object} realAppState 
+ * @param {string} changeId 
+ * @returns {Object} Updated simState
+ */
+function removeSimulationChange(simState, realAppState, changeId) {
+  const remainingChanges = (simState.changes || []).filter(c => c.id !== changeId);
+
+  const newSimState = initSimulationState(realAppState);
+  
+  remainingChanges.forEach(c => {
+    if (c.type === 'payment') {
+      simulatePayment(newSimState, c.data.fromId, c.data.toId, c.data.amount);
+    } else if (c.type === 'add_expense') {
+      simulateAddExpense(newSimState, c.data);
+    } else if (c.type === 'edit_expense') {
+      simulateEditExpenseAmount(newSimState, c.data.expenseId, c.data.newAmount);
+    } else if (c.type === 'remove_expense') {
+      simulateRemoveExpense(newSimState, c.data.expenseId);
+    }
+  });
+
+  return newSimState;
+}
+
+/**
+ * Resets simulation state back to real appState.
+ * 
+ * @param {Object} appState 
+ * @returns {Object} Fresh simulation state
+ */
+function resetSimulationState(appState) {
+  return initSimulationState(appState);
+}
+
+/**
+ * Applies all simulation changes to actual appState and saves to LocalStorage.
+ * 
+ * @param {Object} appState 
+ * @param {Object} simState 
+ * @returns {{ success: boolean, appliedCount: number }}
+ */
+function applySimulationToAppState(appState, simState) {
+  const changes = simState.changes || [];
+  if (changes.length === 0) {
+    return { success: true, appliedCount: 0 };
+  }
+
+  let appliedCount = 0;
+
+  changes.forEach(c => {
+    if (c.type === 'payment') {
+      const settlement = (appState.settlements || []).find(s => s.from === c.data.fromId && s.to === c.data.toId);
+      if (settlement) {
+        addPartialPayment(appState, settlement.id, {
+          amount: c.data.amount,
+          paymentMethod: 'UPI',
+          note: 'Applied from What-If Simulator',
+          date: new Date().toISOString().split('T')[0]
+        });
+        appliedCount++;
+      }
+    } else if (c.type === 'add_expense') {
+      addExpense(appState, c.data);
+      appliedCount++;
+    } else if (c.type === 'edit_expense') {
+      const realExp = appState.expenses.find(e => e.id === c.data.expenseId);
+      if (realExp) {
+        editExpense(appState, c.data.expenseId, {
+          ...realExp,
+          amount: c.data.newAmount
+        });
+        appliedCount++;
+      }
+    } else if (c.type === 'remove_expense') {
+      deleteExpense(appState, c.data.expenseId);
+      appliedCount++;
+    }
+  });
+
+  recalculateGroupSettlements(appState);
+  storeModule.saveData(appState);
+
+  return { success: true, appliedCount };
+}
+
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -940,6 +1290,16 @@ if (typeof module !== 'undefined' && module.exports) {
     editRecurringExpense,
     togglePauseRecurringExpense,
     deleteRecurringExpense,
-    convertRecurringToExpense
+    convertRecurringToExpense,
+    cloneState,
+    initSimulationState,
+    simulatePayment,
+    simulateAddExpense,
+    simulateEditExpenseAmount,
+    simulateRemoveExpense,
+    removeSimulationChange,
+    resetSimulationState,
+    applySimulationToAppState
   };
 }
+

@@ -27,6 +27,8 @@ let editingExpenseId = null;
 let deletingExpenseId = null;
 let editingRecurringId = null;
 let deletingRecurringId = null;
+let editingTemplateId = null;
+let deletingTemplateId = null;
 
 // Receipt upload transient state
 let currentExpenseReceipt = null;
@@ -86,6 +88,7 @@ function renderFullDashboard() {
   ui.renderSummaryCards(appState);
   ui.renderExpenseList(appState, currentFilterCategory, currentSearchQuery, currentSortBy);
   ui.renderRecurringExpensesList(appState);
+  ui.renderTemplatesList(appState);
   ui.renderMembersList(appState);
   ui.renderSettlementsList(appState);
   ui.renderStatistics(appState);
@@ -273,7 +276,7 @@ function bindEventListeners() {
       e.target.classList.add('active');
 
       const targetTab = e.target.getAttribute('data-tab');
-      const tabs = ['tab-expenses', 'tab-recurring', 'tab-members', 'tab-settlements', 'tab-stats', 'tab-activity', 'tab-simulator'];
+      const tabs = ['tab-expenses', 'tab-recurring', 'tab-templates', 'tab-members', 'tab-settlements', 'tab-stats', 'tab-activity', 'tab-simulator'];
       tabs.forEach(t => {
         const el = document.getElementById(t);
         if (el) {
@@ -430,6 +433,18 @@ function bindEventListeners() {
       if (targetExp && targetExp.receipt && targetExp.receipt.data) {
         ui.openReceiptLightboxModal(targetExp.receipt, targetExp.title);
       }
+    } else if (e.target.classList.contains('btn-use-template')) {
+      const id = e.target.getAttribute('data-id');
+      handleUseTemplateAction(id);
+    } else if (e.target.classList.contains('btn-duplicate-template')) {
+      const id = e.target.getAttribute('data-id');
+      handleDuplicateTemplateAction(id);
+    } else if (e.target.classList.contains('btn-edit-template')) {
+      const id = e.target.getAttribute('data-id');
+      openEditTemplateModal(id);
+    } else if (e.target.classList.contains('btn-delete-template')) {
+      const id = e.target.getAttribute('data-id');
+      openDeleteTemplateModal(id);
     } else if (e.target.classList.contains('btn-remove-sim-change')) {
       const changeId = e.target.getAttribute('data-id');
       if (simulationState) {
@@ -492,6 +507,22 @@ function bindEventListeners() {
         ui.showToast(`Applied ${res.appliedCount} simulated change(s) to your group!`, 'success');
       }
     });
+  }
+
+  // Template Action Triggers
+  const btnOpenAddTemplate = document.getElementById('btn-open-add-template');
+  if (btnOpenAddTemplate) {
+    btnOpenAddTemplate.addEventListener('click', () => openAddTemplateModal());
+  }
+
+  const btnOpenAddTemplateEmpty = document.getElementById('btn-open-add-template-empty');
+  if (btnOpenAddTemplateEmpty) {
+    btnOpenAddTemplateEmpty.addEventListener('click', () => openAddTemplateModal());
+  }
+
+  const btnConfirmDeleteTemplate = document.getElementById('btn-confirm-delete-template');
+  if (btnConfirmDeleteTemplate) {
+    btnConfirmDeleteTemplate.addEventListener('click', () => handleDeleteTemplateSubmit());
   }
 
   // Receipt File Attachment & Preview Triggers
@@ -687,6 +718,33 @@ function bindEventListeners() {
     formSimRemoveExpense.addEventListener('submit', (e) => {
       e.preventDefault();
       handleSimRemoveExpenseSubmit();
+    });
+  }
+
+  // Template Form Submit
+  const formTemplate = document.getElementById('form-template');
+  if (formTemplate) {
+    formTemplate.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleTemplateFormSubmit();
+    });
+  }
+
+  // Split Type toggle buttons inside Template Modal
+  const btnTemplateSplitEqual = document.getElementById('btn-template-split-equal');
+  const btnTemplateSplitCustom = document.getElementById('btn-template-split-custom');
+  if (btnTemplateSplitEqual && btnTemplateSplitCustom) {
+    btnTemplateSplitEqual.addEventListener('click', () => {
+      btnTemplateSplitEqual.classList.add('active');
+      btnTemplateSplitCustom.classList.remove('active');
+      document.getElementById('template-custom-shares-container').classList.add('hidden');
+    });
+
+    btnTemplateSplitCustom.addEventListener('click', () => {
+      btnTemplateSplitCustom.classList.add('active');
+      btnTemplateSplitEqual.classList.remove('active');
+      document.getElementById('template-custom-shares-container').classList.remove('hidden');
+      renderTemplateCustomSharesInputs();
     });
   }
 
@@ -1604,4 +1662,291 @@ function handleSimRemoveExpenseSubmit() {
   ui.closeModal('modal-sim-remove-expense');
   ui.renderSimulatorTab(appState, simulationState);
   ui.showToast('Simulated expense removal added', 'info');
+}
+
+/**
+ * Expense Template Modal Handlers & Actions
+ */
+function openAddTemplateModal() {
+  editingTemplateId = null;
+  document.getElementById('modal-template-title').textContent = 'Create Expense Template';
+
+  const inputName = document.getElementById('input-template-name');
+  const inputTitle = document.getElementById('input-template-title');
+  const inputAmount = document.getElementById('input-template-amount');
+  const selectCategory = document.getElementById('select-template-category');
+  const selectPaidBy = document.getElementById('select-template-paid-by');
+  const participantsContainer = document.getElementById('template-participants-checkboxes');
+  const btnEqual = document.getElementById('btn-template-split-equal');
+  const btnCustom = document.getElementById('btn-template-split-custom');
+  const customContainer = document.getElementById('template-custom-shares-container');
+
+  if (inputName) inputName.value = '';
+  if (inputTitle) inputTitle.value = '';
+  if (inputAmount) inputAmount.value = '';
+  if (selectCategory) selectCategory.value = 'Food';
+
+  if (selectPaidBy) {
+    selectPaidBy.innerHTML = '<option value="">(Optional Default Payer)</option>' +
+      appState.members.map(m => `<option value="${m.id}">${ui.escapeHtml(m.name)}</option>`).join('');
+  }
+
+  if (participantsContainer) {
+    participantsContainer.innerHTML = appState.members.map(m => `
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+        <input type="checkbox" class="chk-template-participant" value="${m.id}" checked>
+        <span>${ui.escapeHtml(m.name)}</span>
+      </label>
+    `).join('');
+  }
+
+  if (btnEqual && btnCustom && customContainer) {
+    btnEqual.classList.add('active');
+    btnCustom.classList.remove('active');
+    customContainer.classList.add('hidden');
+  }
+
+  ui.openModal('modal-template');
+}
+
+function openEditTemplateModal(templateId) {
+  const target = (appState.templates || []).find(t => t.id === templateId);
+  if (!target) return;
+
+  editingTemplateId = templateId;
+  document.getElementById('modal-template-title').textContent = 'Edit Expense Template';
+
+  const inputName = document.getElementById('input-template-name');
+  const inputTitle = document.getElementById('input-template-title');
+  const inputAmount = document.getElementById('input-template-amount');
+  const selectCategory = document.getElementById('select-template-category');
+  const selectPaidBy = document.getElementById('select-template-paid-by');
+  const participantsContainer = document.getElementById('template-participants-checkboxes');
+  const btnEqual = document.getElementById('btn-template-split-equal');
+  const btnCustom = document.getElementById('btn-template-split-custom');
+  const customContainer = document.getElementById('template-custom-shares-container');
+
+  if (inputName) inputName.value = target.name || '';
+  if (inputTitle) inputTitle.value = target.title || '';
+  if (inputAmount) inputAmount.value = target.defaultAmount ? target.defaultAmount : '';
+  if (selectCategory) selectCategory.value = target.category || 'Food';
+
+  if (selectPaidBy) {
+    selectPaidBy.innerHTML = '<option value="">(Optional Default Payer)</option>' +
+      appState.members.map(m => `<option value="${m.id}">${ui.escapeHtml(m.name)}</option>`).join('');
+    selectPaidBy.value = target.defaultPayer || '';
+  }
+
+  if (participantsContainer) {
+    const selectedSet = new Set(target.participants || []);
+    participantsContainer.innerHTML = appState.members.map(m => `
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+        <input type="checkbox" class="chk-template-participant" value="${m.id}" ${selectedSet.has(m.id) ? 'checked' : ''}>
+        <span>${ui.escapeHtml(m.name)}</span>
+      </label>
+    `).join('');
+  }
+
+  if (btnEqual && btnCustom && customContainer) {
+    if (target.splitType === 'custom') {
+      btnCustom.classList.add('active');
+      btnEqual.classList.remove('active');
+      customContainer.classList.remove('hidden');
+      renderTemplateCustomSharesInputs(target.customShares || {});
+    } else {
+      btnEqual.classList.add('active');
+      btnCustom.classList.remove('active');
+      customContainer.classList.add('hidden');
+    }
+  }
+
+  ui.openModal('modal-template');
+}
+
+function handleTemplateFormSubmit() {
+  const name = document.getElementById('input-template-name').value;
+  const title = document.getElementById('input-template-title').value;
+  const defaultAmount = document.getElementById('input-template-amount').value;
+  const category = document.getElementById('select-template-category').value;
+  const defaultPayer = document.getElementById('select-template-paid-by').value;
+  const btnCustom = document.getElementById('btn-template-split-custom');
+
+  const checkedCheckboxes = Array.from(document.querySelectorAll('.chk-template-participant:checked'));
+  const participants = checkedCheckboxes.map(c => c.value);
+
+  const splitType = btnCustom.classList.contains('active') ? 'custom' : 'equal';
+  const customShares = {};
+
+  if (splitType === 'custom') {
+    document.querySelectorAll('.input-template-custom-share').forEach(inp => {
+      const id = inp.getAttribute('data-id');
+      customShares[id] = parseFloat(inp.value) || 0;
+    });
+  }
+
+  const templateData = {
+    name,
+    title,
+    defaultAmount,
+    category,
+    splitType,
+    participants,
+    customShares,
+    defaultPayer
+  };
+
+  let res;
+  if (editingTemplateId) {
+    res = expense.editTemplate(appState, editingTemplateId, templateData);
+  } else {
+    res = expense.addTemplate(appState, templateData);
+  }
+
+  if (!res.success) {
+    ui.showToast(res.error, 'danger');
+    return;
+  }
+
+  const wasEditing = editingTemplateId;
+  editingTemplateId = null;
+  ui.closeModal('modal-template');
+  renderFullDashboard();
+  ui.showToast(`Template "${res.template.name}" ${wasEditing ? 'updated' : 'created'} successfully`, 'success');
+}
+
+function handleDuplicateTemplateAction(templateId) {
+  const res = expense.duplicateTemplate(appState, templateId);
+  if (!res.success) {
+    ui.showToast(res.error, 'danger');
+    return;
+  }
+
+  renderFullDashboard();
+  ui.showToast(`Duplicated as "${res.template.name}"`, 'success');
+}
+
+function openDeleteTemplateModal(templateId) {
+  deletingTemplateId = templateId;
+  ui.openModal('modal-confirm-delete-template');
+}
+
+function handleDeleteTemplateSubmit() {
+  if (!deletingTemplateId) return;
+
+  const res = expense.deleteTemplate(appState, deletingTemplateId);
+  deletingTemplateId = null;
+
+  ui.closeModal('modal-confirm-delete-template');
+  renderFullDashboard();
+  ui.showToast('Template deleted', 'info');
+}
+
+/**
+ * Use Template Action: Pre-fills the regular Add Expense modal with template configuration.
+ * Does NOT immediately save the expense.
+ * 
+ * @param {string} templateId 
+ */
+function handleUseTemplateAction(templateId) {
+  const target = (appState.templates || []).find(t => t.id === templateId);
+  if (!target) return;
+
+  const sanitized = expense.sanitizeTemplateForMemberChanges(target, appState.members);
+
+  editingExpenseId = null;
+  currentExpenseReceipt = null;
+
+  const titleInput = document.getElementById('input-expense-title');
+  const amountInput = document.getElementById('input-expense-amount');
+  const categorySelect = document.getElementById('select-expense-category');
+  const paidBySelect = document.getElementById('select-expense-paid-by');
+  const btnEqual = document.getElementById('btn-split-equal');
+  const btnCustom = document.getElementById('btn-split-custom');
+  const customContainer = document.getElementById('custom-shares-container');
+  const modalTitle = document.getElementById('modal-expense-title');
+
+  if (modalTitle) modalTitle.textContent = 'Add Expense';
+
+  if (titleInput) titleInput.value = sanitized.title || '';
+  if (amountInput) amountInput.value = sanitized.defaultAmount ? sanitized.defaultAmount.toString() : '';
+  if (categorySelect) categorySelect.value = sanitized.category || 'Food';
+
+  if (paidBySelect) {
+    paidBySelect.innerHTML = appState.members.map(m => `
+      <option value="${m.id}">${ui.escapeHtml(m.name)}</option>
+    `).join('');
+    if (sanitized.defaultPayer) {
+      paidBySelect.value = sanitized.defaultPayer;
+    }
+  }
+
+  const participantsContainer = document.getElementById('participants-checkboxes');
+  if (participantsContainer) {
+    const selectedSet = new Set(sanitized.participants || []);
+    participantsContainer.innerHTML = appState.members.map(m => `
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+        <input type="checkbox" class="chk-participant" value="${m.id}" ${selectedSet.has(m.id) ? 'checked' : ''}>
+        <span>${ui.escapeHtml(m.name)}</span>
+      </label>
+    `).join('');
+  }
+
+  if (btnEqual && btnCustom && customContainer) {
+    if (sanitized.splitType === 'custom') {
+      btnCustom.classList.add('active');
+      btnEqual.classList.remove('active');
+      customContainer.classList.remove('hidden');
+      renderCustomSharesInputsWithValues(sanitized.customShares || {});
+    } else {
+      btnEqual.classList.add('active');
+      btnCustom.classList.remove('active');
+      customContainer.classList.add('hidden');
+    }
+  }
+
+  ui.renderReceiptPreview(null);
+  ui.openModal('modal-expense');
+  ui.showToast(`Pre-filled expense form from "${sanitized.name}" template`, 'info');
+}
+
+function renderTemplateCustomSharesInputs(existingShares = {}) {
+  const container = document.getElementById('template-custom-shares-inputs-list');
+  if (!container) return;
+
+  const checkedCheckboxes = Array.from(document.querySelectorAll('.chk-template-participant:checked'));
+  const checkedIds = checkedCheckboxes.map(c => c.value);
+
+  const memberMap = {};
+  appState.members.forEach(m => { memberMap[m.id] = m.name; });
+
+  container.innerHTML = checkedIds.map(id => `
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+      <span style="font-size: 0.9rem; font-weight: 500;">${ui.escapeHtml(memberMap[id] || id)}</span>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <span>₹</span>
+        <input type="number" step="0.01" min="0" class="form-control input-template-custom-share" data-id="${id}" value="${existingShares[id] || ''}" style="width: 100px; text-align: right;">
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCustomSharesInputsWithValues(existingShares = {}) {
+  const container = document.getElementById('custom-shares-inputs-list');
+  if (!container) return;
+
+  const checkedCheckboxes = Array.from(document.querySelectorAll('.chk-participant:checked'));
+  const checkedIds = checkedCheckboxes.map(c => c.value);
+
+  const memberMap = {};
+  appState.members.forEach(m => { memberMap[m.id] = m.name; });
+
+  container.innerHTML = checkedIds.map(id => `
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+      <span style="font-size: 0.9rem; font-weight: 500;">${ui.escapeHtml(memberMap[id] || id)}</span>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <span>₹</span>
+        <input type="number" step="0.01" min="0" class="form-control input-custom-share" data-id="${id}" value="${existingShares[id] || ''}" style="width: 100px; text-align: right;">
+      </div>
+    </div>
+  `).join('');
 }

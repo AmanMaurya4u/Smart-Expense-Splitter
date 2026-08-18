@@ -47,6 +47,16 @@ function syncActiveGroupProjections(appState) {
     if (!Array.isArray(activeGroup.recurringExpenses)) activeGroup.recurringExpenses = [];
     if (!Array.isArray(activeGroup.templates)) activeGroup.templates = [];
 
+    // If root pointers were updated/reassigned directly (e.g. via .filter), update activeGroup first!
+    if (appState.group === activeGroup) {
+      if (Array.isArray(appState.members)) activeGroup.members = appState.members;
+      if (Array.isArray(appState.expenses)) activeGroup.expenses = appState.expenses;
+      if (Array.isArray(appState.settlements)) activeGroup.settlements = appState.settlements;
+      if (Array.isArray(appState.activities)) activeGroup.activities = appState.activities;
+      if (Array.isArray(appState.recurringExpenses)) activeGroup.recurringExpenses = appState.recurringExpenses;
+      if (Array.isArray(appState.templates)) activeGroup.templates = appState.templates;
+    }
+
     appState.group = activeGroup;
     appState.members = activeGroup.members;
     appState.expenses = activeGroup.expenses;

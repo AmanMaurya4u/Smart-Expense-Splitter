@@ -945,6 +945,166 @@ function compressReceiptImage(file, maxDimension = 1600, quality = 0.75) {
   });
 }
 
+/**
+ * Pure, non-destructive function to filter and sort expenses array based on criteria.
+ * Does NOT mutate original expenses array or application state.
+ * 
+ * @param {Array<Object>} expenses 
+ * @param {Array<Object>} members 
+ * @param {Object} filterState 
+ * @returns {{ filtered: Array<Object>, totalCount: number, filteredCount: number, filteredTotalAmount: number }}
+ */
+function filterAndSortExpenses(expenses, members, filterState) {
+  const allExpenses = Array.isArray(expenses) ? expenses : [];
+  const memberList = Array.isArray(members) ? members : [];
+
+  const memberMap = {};
+  memberList.forEach(m => { memberMap[m.id] = m.name; });
+
+  const state = {
+    searchQuery: '',
+    category: 'ALL',
+    paidBy: 'ALL',
+    dateRange: 'ALL',
+    startDate: null,
+    endDate: null,
+    minAmount: null,
+    maxAmount: null,
+    splitType: 'ALL',
+    receipt: 'ALL',
+    sortBy: 'newest',
+    ...filterState
+  };
+
+  let filtered = [...allExpenses];
+
+  // 1. Search Query (Title, Paid By Member Name, Category)
+  if (state.searchQuery && state.searchQuery.trim() !== '') {
+    const q = state.searchQuery.trim().toLowerCase();
+    filtered = filtered.filter(exp => {
+      const titleMatch = (exp.title || '').toLowerCase().includes(q);
+      const categoryMatch = (exp.category || '').toLowerCase().includes(q);
+      const payerName = memberMap[exp.paidBy] || '';
+      const payerMatch = payerName.toLowerCase().includes(q);
+
+      return titleMatch || categoryMatch || payerMatch;
+    });
+  }
+
+  // 2. Category Filter
+  if (state.category && state.category !== 'ALL') {
+    filtered = filtered.filter(exp => exp.category === state.category);
+  }
+
+  // 3. Paid By Member Filter
+  if (state.paidBy && state.paidBy !== 'ALL') {
+    filtered = filtered.filter(exp => exp.paidBy === state.paidBy);
+  }
+
+  // 4. Date Range Filter ('ALL', 'TODAY', 'WEEK', 'MONTH', 'LAST_MONTH', 'CUSTOM')
+  if (state.dateRange && state.dateRange !== 'ALL') {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (state.dateRange === 'TODAY') {
+      filtered = filtered.filter(exp => (exp.date || '').split('T')[0] === todayStr);
+    } else if (state.dateRange === 'WEEK') {
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      filtered = filtered.filter(exp => {
+        const d = new Date(exp.date);
+        return !isNaN(d) && d >= weekAgo && d <= now;
+      });
+    } else if (state.dateRange === 'MONTH') {
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      filtered = filtered.filter(exp => {
+        const d = new Date(exp.date);
+        return !isNaN(d) && d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+      });
+    } else if (state.dateRange === 'LAST_MONTH') {
+      const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const prevYear = prevMonthDate.getFullYear();
+      const prevMonth = prevMonthDate.getMonth();
+      filtered = filtered.filter(exp => {
+        const d = new Date(exp.date);
+        return !isNaN(d) && d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+      });
+    } else if (state.dateRange === 'CUSTOM') {
+      if (state.startDate) {
+        const start = new Date(state.startDate);
+        if (!isNaN(start)) {
+          filtered = filtered.filter(exp => {
+            const d = new Date(exp.date);
+            return !isNaN(d) && d >= start;
+          });
+        }
+      }
+      if (state.endDate) {
+        const end = new Date(state.endDate);
+        if (!isNaN(end)) {
+          end.setHours(23, 59, 59, 999);
+          filtered = filtered.filter(exp => {
+            const d = new Date(exp.date);
+            return !isNaN(d) && d <= end;
+          });
+        }
+      }
+    }
+  }
+
+  // 5. Amount Range Filter
+  if (state.minAmount !== null && state.minAmount !== '' && !isNaN(parseFloat(state.minAmount))) {
+    const min = parseFloat(state.minAmount);
+    filtered = filtered.filter(exp => (parseFloat(exp.amount) || 0) >= min);
+  }
+  if (state.maxAmount !== null && state.maxAmount !== '' && !isNaN(parseFloat(state.maxAmount))) {
+    const max = parseFloat(state.maxAmount);
+    filtered = filtered.filter(exp => (parseFloat(exp.amount) || 0) <= max);
+  }
+
+  // 6. Split Type Filter ('ALL', 'equal', 'custom')
+  if (state.splitType && state.splitType !== 'ALL') {
+    filtered = filtered.filter(exp => (exp.splitType || 'equal') === state.splitType);
+  }
+
+  // 7. Receipt Availability Filter ('ALL', 'WITH_RECEIPT', 'WITHOUT_RECEIPT')
+  if (state.receipt && state.receipt !== 'ALL') {
+    if (state.receipt === 'WITH_RECEIPT') {
+      filtered = filtered.filter(exp => exp.receipt && exp.receipt.data);
+    } else if (state.receipt === 'WITHOUT_RECEIPT') {
+      filtered = filtered.filter(exp => !exp.receipt || !exp.receipt.data);
+    }
+  }
+
+  // 8. Sorting
+  const sortBy = state.sortBy || 'newest';
+  if (sortBy === 'oldest') {
+    filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+  } else if (sortBy === 'amount_desc' || sortBy === 'amount') {
+    filtered.sort((a, b) => (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0));
+  } else if (sortBy === 'amount_asc') {
+    filtered.sort((a, b) => (parseFloat(a.amount) || 0) - (parseFloat(b.amount) || 0));
+  } else if (sortBy === 'title_asc') {
+    filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  } else if (sortBy === 'title_desc') {
+    filtered.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+  } else if (sortBy === 'category') {
+    filtered.sort((a, b) => (a.category || '').localeCompare(b.category || ''));
+  } else {
+    // Newest first default
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  const filteredTotalAmount = filtered.reduce((acc, exp) => acc + (parseFloat(exp.amount) || 0), 0);
+
+  return {
+    filtered,
+    totalCount: allExpenses.length,
+    filteredCount: filtered.length,
+    filteredTotalAmount: Math.round(filteredTotalAmount * 100) / 100
+  };
+}
+
 // Universal module export support (Node.js & Browser)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -971,6 +1131,7 @@ if (typeof module !== 'undefined' && module.exports) {
     validateReceiptFile,
     compressReceiptImage,
     compareBalances,
-    compareBudgetStats
+    compareBudgetStats,
+    filterAndSortExpenses
   };
 }

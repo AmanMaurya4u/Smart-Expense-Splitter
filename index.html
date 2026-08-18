@@ -35,6 +35,10 @@
         </div>
       </div>
 
+      <div id="group-switcher-container">
+        <!-- Rendered dynamically by ui.renderGroupSwitcher() -->
+      </div>
+
       <div class="header-actions">
         <button id="btn-undo" class="btn-icon" title="Undo (Ctrl+Z)" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
@@ -1345,8 +1349,94 @@
         </button>
       </div>
 
+  <!-- Modal: Manage Groups -->
+  <div id="modal-manage-groups" class="modal-overlay">
+    <div class="modal-container" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3 class="modal-title">⚙ My Expense Groups</h3>
+        <button class="btn-close-modal" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <p style="margin: 0; color: var(--color-text-muted); font-size: 0.9rem;">Manage all your independent expense workspaces.</p>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-open-create-group-workspace">
+            + Create New Group
+          </button>
+        </div>
+
+        <div id="manage-groups-cards-list">
+          <!-- Rendered dynamically by ui.renderManageGroupsModal() -->
+        </div>
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary btn-close-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Create New Group Workspace -->
+  <div id="modal-create-group-workspace" class="modal-overlay">
+    <div class="modal-container" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title">🌴 Create New Expense Group</h3>
+        <button class="btn-close-modal" aria-label="Close modal">&times;</button>
+      </div>
+      <form id="form-create-group-workspace">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="input-create-workspace-name">Group Name *</label>
+            <input type="text" id="input-create-workspace-name" class="form-control" placeholder="e.g. Goa Trip 2026, Roommates, Office Team" required maxlength="50">
+            <div class="field-error" id="error-create-workspace-name"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Workspace</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Rename Group -->
+  <div id="modal-rename-group" class="modal-overlay">
+    <div class="modal-container" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title">✏️ Rename Group</h3>
+        <button class="btn-close-modal" aria-label="Close modal">&times;</button>
+      </div>
+      <form id="form-rename-group">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="input-rename-group-name">New Group Name *</label>
+            <input type="text" id="input-rename-group-name" class="form-control" placeholder="Enter new group name" required maxlength="50">
+            <div class="field-error" id="error-rename-group-name"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save New Name</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Confirm Delete Group -->
+  <div id="modal-confirm-delete-group" class="modal-overlay">
+    <div class="modal-container" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="color: var(--color-danger-text);">⚠️ Delete Expense Group?</h3>
+        <button class="btn-close-modal" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-weight: 600;" id="delete-group-modal-title">Delete 'Goa Trip 2026'?</p>
+        <p style="color: var(--color-danger-text); font-size: 0.9rem; line-height: 1.5;">
+          This will permanently delete the group's members, expenses, settlements, payments, budget, recurring expenses, receipts, activity history, and templates.
+        </p>
+        <p style="font-size: 0.85rem; color: var(--color-text-muted);">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-delete-group">Delete Group Workspace</button>
       </div>
     </div>
   </div>

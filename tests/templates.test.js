@@ -151,8 +151,7 @@ console.log('\nTest Scenarios 6-10: Verify system updates from template-generate
 
 // 6. Balance updates
 const balances = calculateBalances(appState.members, appState.expenses);
-const amanBal = balances.find(b => b.memberId === m1);
-assert(amanBal.netBalance === 1000, 'Aman net balance is +₹1,000 (paid ₹1500, share ₹500)');
+assert(balances[m1].balance === 1000, 'Aman net balance is +₹1,000 (paid ₹1500, share ₹500)');
 
 // 7. Settlement updates
 const settlements = calculateSettlements(balances);

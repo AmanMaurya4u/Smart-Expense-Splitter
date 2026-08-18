@@ -230,6 +230,141 @@ function renderSetupMembersList() {
     }
   });
 
+  // Group Switcher Change Event Delegation
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'select-active-group') {
+      const val = e.target.value;
+      if (val === '__action_create_group__') {
+        const inputName = document.getElementById('input-create-workspace-name');
+        if (inputName) inputName.value = '';
+        ui.openModal('modal-create-group-workspace');
+        e.target.value = appState.activeGroupId || '';
+      } else if (val === '__action_manage_groups__') {
+        ui.renderManageGroupsModal(appState);
+        ui.openModal('modal-manage-groups');
+        e.target.value = appState.activeGroupId || '';
+      } else if (val && val !== appState.activeGroupId) {
+        const res = expense.switchActiveGroup(appState, val);
+        if (res.success) {
+          currentFilterState = resetFilterState ? resetFilterState() : { searchQuery: '', category: 'ALL', paidBy: 'ALL', dateRange: 'ALL', startDate: null, endDate: null, minAmount: null, maxAmount: null, sortBy: 'DATE_DESC' };
+          renderFullDashboard();
+          ui.showToast(`Switched workspace to "${res.group.name}"`, 'success');
+        }
+      }
+    }
+  });
+
+  // Open Create Workspace Modal Button
+  const btnOpenCreateWorkspace = document.getElementById('btn-open-create-group-workspace');
+  if (btnOpenCreateWorkspace) {
+    btnOpenCreateWorkspace.addEventListener('click', () => {
+      const inputName = document.getElementById('input-create-workspace-name');
+      if (inputName) inputName.value = '';
+      ui.openModal('modal-create-group-workspace');
+    });
+  }
+
+  // Create Workspace Form Submit
+  const formCreateWorkspace = document.getElementById('form-create-group-workspace');
+  if (formCreateWorkspace) {
+    formCreateWorkspace.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('input-create-workspace-name');
+      ui.clearFieldError(input);
+
+      const res = expense.createGroupWorkspace(appState, input.value);
+      if (!res.success) {
+        ui.showFieldError(input, res.error);
+        return;
+      }
+
+      input.value = '';
+      ui.closeModal('modal-create-group-workspace');
+      ui.closeModal('modal-manage-groups');
+      currentFilterState = resetFilterState ? resetFilterState() : { searchQuery: '', category: 'ALL', paidBy: 'ALL', dateRange: 'ALL', startDate: null, endDate: null, minAmount: null, maxAmount: null, sortBy: 'DATE_DESC' };
+      ui.showScreen('screen-dashboard');
+      renderFullDashboard();
+      ui.showToast(`Group "${res.group.name}" created!`, 'success');
+    });
+  }
+
+  // Manage Groups Modal Delegation
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('btn-switch-group')) {
+      const id = e.target.getAttribute('data-id');
+      const res = expense.switchActiveGroup(appState, id);
+      if (res.success) {
+        ui.closeModal('modal-manage-groups');
+        currentFilterState = resetFilterState ? resetFilterState() : { searchQuery: '', category: 'ALL', paidBy: 'ALL', dateRange: 'ALL', startDate: null, endDate: null, minAmount: null, maxAmount: null, sortBy: 'DATE_DESC' };
+        renderFullDashboard();
+        ui.showToast(`Switched workspace to "${res.group.name}"`, 'success');
+      }
+    } else if (e.target.classList.contains('btn-open-rename-group')) {
+      const id = e.target.getAttribute('data-id');
+      const name = e.target.getAttribute('data-name');
+      renamingGroupId = id;
+      const input = document.getElementById('input-rename-group-name');
+      if (input) input.value = name;
+      ui.openModal('modal-rename-group');
+    } else if (e.target.classList.contains('btn-open-delete-group')) {
+      const id = e.target.getAttribute('data-id');
+      const name = e.target.getAttribute('data-name');
+      deletingGroupId = id;
+      const titleEl = document.getElementById('delete-group-modal-title');
+      if (titleEl) titleEl.textContent = `Delete '${name}'?`;
+      ui.openModal('modal-confirm-delete-group');
+    }
+  });
+
+  // Rename Group Form Submit
+  const formRenameGroup = document.getElementById('form-rename-group');
+  if (formRenameGroup) {
+    formRenameGroup.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!renamingGroupId) return;
+
+      const input = document.getElementById('input-rename-group-name');
+      ui.clearFieldError(input);
+
+      const res = expense.renameGroupWorkspace(appState, renamingGroupId, input.value);
+      if (!res.success) {
+        ui.showFieldError(input, res.error);
+        return;
+      }
+
+      renamingGroupId = null;
+      ui.closeModal('modal-rename-group');
+      ui.renderManageGroupsModal(appState);
+      renderFullDashboard();
+      ui.showToast(`Renamed group to "${res.group.name}"`, 'success');
+    });
+  }
+
+  // Delete Group Confirm Button
+  const btnConfirmDeleteGroup = document.getElementById('btn-confirm-delete-group');
+  if (btnConfirmDeleteGroup) {
+    btnConfirmDeleteGroup.addEventListener('click', () => {
+      if (!deletingGroupId) return;
+
+      const res = expense.deleteGroupWorkspace(appState, deletingGroupId);
+      const deletedName = res.deletedGroup ? res.deletedGroup.name : 'Group';
+      deletingGroupId = null;
+
+      ui.closeModal('modal-confirm-delete-group');
+
+      if (res.remainingCount > 0) {
+        ui.renderManageGroupsModal(appState);
+        renderFullDashboard();
+        ui.showToast(`Deleted group "${deletedName}"`, 'info');
+      } else {
+        ui.closeModal('modal-manage-groups');
+        ui.showScreen('screen-welcome');
+        renderWelcomeScreen();
+        ui.showToast('All groups deleted. Please create a new group.', 'info');
+      }
+    });
+  }
+
   // Theme Switcher
   const themeBtn = document.getElementById('btn-toggle-theme');
   if (themeBtn) {

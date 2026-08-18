@@ -291,9 +291,23 @@ function addMember(appState, name, contact = '') {
  * @returns {boolean}
  */
 function isMemberDeletable(appState, memberId) {
-  return !appState.expenses.some(
+  const hasExpenseHistory = (appState.expenses || []).some(
     exp => exp.paidBy === memberId || (exp.participants && exp.participants.includes(memberId))
   );
+
+  const hasRecurringHistory = (appState.recurringExpenses || []).some(
+    rec => rec.paidBy === memberId || (rec.participants && rec.participants.includes(memberId))
+  );
+
+  const hasTemplateHistory = (appState.templates || []).some(
+    tpl => tpl.defaultPayer === memberId || (tpl.participants && tpl.participants.includes(memberId))
+  );
+
+  const hasSettlementHistory = (appState.settlements || []).some(
+    s => s.from === memberId || s.to === memberId
+  );
+
+  return !hasExpenseHistory && !hasRecurringHistory && !hasTemplateHistory && !hasSettlementHistory;
 }
 
 /**

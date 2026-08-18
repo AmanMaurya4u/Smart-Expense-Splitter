@@ -997,6 +997,239 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+/**
+ * Renders What-If Settlement Simulator screen & Before vs After comparison
+ * 
+ * @param {Object} appState 
+ * @param {Object} simState 
+ */
+function renderSimulatorTab(appState, simState) {
+  const emptyState = document.getElementById('simulator-empty-state');
+  const resultsContainer = document.getElementById('simulator-results-container');
+  const changesListContainer = document.getElementById('sim-changes-list');
+  const changesCountEl = document.getElementById('sim-changes-count');
+
+  if (!emptyState || !resultsContainer) return;
+
+  const expenses = appState.expenses || [];
+  if (expenses.length === 0 && (!simState || (simState.expenses || []).length === 0)) {
+    emptyState.classList.remove('hidden');
+    resultsContainer.classList.add('hidden');
+    if (changesListContainer) changesListContainer.innerHTML = '';
+    if (changesCountEl) changesCountEl.textContent = '0';
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+  resultsContainer.classList.remove('hidden');
+
+  // Active Simulation Changes List
+  const changes = (simState && simState.changes) || [];
+  if (changesCountEl) changesCountEl.textContent = changes.length;
+
+  if (changesListContainer) {
+    if (changes.length === 0) {
+      changesListContainer.innerHTML = `<span style="font-size: 0.85rem; color: var(--color-text-muted);">No hypothetical changes added yet. Choose an action above to start simulation.</span>`;
+    } else {
+      changesListContainer.innerHTML = changes.map(c => `
+        <div class="badge" style="background: var(--color-surface); border: 1px solid var(--color-primary-light); padding: 6px 12px; font-size: 0.85rem; gap: 8px; font-weight: 500; color: var(--color-text-main);">
+          <span>+ ${escapeHtml(c.description)}</span>
+          <button type="button" class="btn-remove-sim-change" data-id="${c.id}" title="Remove change" style="background:none; border:none; color:var(--color-danger-text); cursor:pointer; font-weight:bold;">✕</button>
+        </div>
+      `).join('');
+    }
+  }
+
+  // Calculate BEFORE metrics
+  const beforeBalances = calc.calculateBalances ? calc.calculateBalances(appState.members || [], appState.expenses || []) : {};
+  const beforeSettlements = calc.calculateSettlements ? calc.calculateSettlements(beforeBalances) : [];
+  const beforeTotalSpend = calc.calculateTotalSpending ? calc.calculateTotalSpending(appState.expenses || []) : 0;
+  const beforeBudget = calc.getBudgetStats ? calc.getBudgetStats(appState.group, appState.expenses || []) : { hasBudget: false };
+
+  // Calculate AFTER metrics
+  const afterMembers = (simState && simState.members) || appState.members || [];
+  const afterExpenses = (simState && simState.expenses) || appState.expenses || [];
+  const afterBalances = calc.calculateBalances ? calc.calculateBalances(afterMembers, afterExpenses) : {};
+
+  const rawAfterSettlements = calc.calculateSettlements ? calc.calculateSettlements(afterBalances) : [];
+  
+  const simPaymentsMap = new Map();
+  ((simState && simState.settlements) || []).forEach(s => {
+    const key = `${s.from}_${s.to}`;
+    if (Array.isArray(s.payments) && s.payments.length > 0) {
+      simPaymentsMap.set(key, s.payments);
+    }
+  });
+
+  const afterSettlements = rawAfterSettlements.map(s => {
+    const key = `${s.from}_${s.to}`;
+    if (simPaymentsMap.has(key)) {
+      const pList = [...simPaymentsMap.get(key)];
+      const stats = calc.getSettlementPaymentStats ? calc.getSettlementPaymentStats({ amount: s.amount, payments: pList }) : { status: 'pending' };
+      return {
+        ...s,
+        payments: pList,
+        status: stats.status
+      };
+    }
+    return s;
+  });
+
+  const afterTotalSpend = calc.calculateTotalSpending ? calc.calculateTotalSpending(afterExpenses) : 0;
+  const afterBudget = calc.getBudgetStats ? calc.getBudgetStats(simState ? simState.group : appState.group, afterExpenses) : { hasBudget: false };
+
+  const spendingDiff = Math.round((afterTotalSpend - beforeTotalSpend) * 100) / 100;
+  const balanceComparisons = calc.compareBalances ? calc.compareBalances(beforeBalances, afterBalances) : [];
+
+  const memberMap = {};
+  afterMembers.forEach(m => { memberMap[m.id] = m.name; });
+
+  // Render HTML Comparison sections
+  resultsContainer.innerHTML = `
+    <!-- 1. Total Spending Comparison Card -->
+    <div class="card" style="border-left: 4px solid var(--color-primary);">
+      <h4 style="font-size: 0.95rem; font-weight: 600; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 12px;">Total Spending Comparison</h4>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; text-align: center;">
+        <div style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+          <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Before</div>
+          <strong style="font-size: 1.2rem; display: block; margin-top: 2px;">₹${beforeTotalSpend.toFixed(2)}</strong>
+        </div>
+        <div style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md);">
+          <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Simulated (After)</div>
+          <strong style="font-size: 1.2rem; display: block; margin-top: 2px; color: var(--color-primary);">₹${afterTotalSpend.toFixed(2)}</strong>
+        </div>
+        <div style="background: var(--color-bg-subtle); padding: 12px; border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase;">Difference</div>
+          <span class="badge ${spendingDiff > 0 ? 'badge-danger' : (spendingDiff < 0 ? 'badge-success' : 'badge-secondary')}" style="font-size: 0.95rem; padding: 4px 10px; margin-top: 4px;">
+            ${spendingDiff > 0 ? `+₹${spendingDiff.toFixed(2)}` : (spendingDiff < 0 ? `-₹${Math.abs(spendingDiff).toFixed(2)}` : '₹0.00')}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Budget Impact Card (If budget configured) -->
+    ${afterBudget.hasBudget ? `
+      <div class="card" style="border-left: 4px solid ${afterBudget.isExceeded ? 'var(--color-danger-text)' : (afterBudget.isWarning ? 'var(--color-warning-text)' : 'var(--color-success-text)')};">
+        <h4 style="font-size: 0.95rem; font-weight: 600; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 12px;">Group Budget Impact</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; text-align: center;">
+          <div>
+            <div style="font-size: 0.75rem; color: var(--color-text-muted);">Budget Limit</div>
+            <strong style="font-size: 1rem;">₹${afterBudget.totalBudget.toFixed(2)}</strong>
+          </div>
+          <div>
+            <div style="font-size: 0.75rem; color: var(--color-text-muted);">Before Usage</div>
+            <strong style="font-size: 1rem;">${beforeBudget.percentage}%</strong>
+          </div>
+          <div>
+            <div style="font-size: 0.75rem; color: var(--color-text-muted);">Simulated Usage</div>
+            <strong style="font-size: 1rem; color: ${afterBudget.isExceeded ? 'var(--color-danger-text)' : 'var(--color-primary)'};">${afterBudget.percentage}%</strong>
+          </div>
+          <div>
+            <div style="font-size: 0.75rem; color: var(--color-text-muted);">Remaining</div>
+            <strong style="font-size: 1rem; color: ${afterBudget.remaining > 0 ? 'var(--color-success-text)' : 'var(--color-danger-text)'};">₹${afterBudget.remaining.toFixed(2)}</strong>
+          </div>
+        </div>
+
+        ${afterBudget.isExceeded ? `
+          <div style="background: var(--color-danger-bg); border: 1px solid rgba(239,68,68,0.3); color: var(--color-danger-text); padding: 10px 14px; border-radius: var(--radius-sm); margin-top: 12px; font-size: 0.85rem; font-weight: 600;">
+            🔴 Simulated changes exceed the group budget by <strong>₹${afterBudget.exceededAmount.toFixed(2)}</strong>.
+          </div>
+        ` : ''}
+      </div>
+    ` : ''}
+
+    <!-- 3. Member Balances BEFORE vs AFTER -->
+    <div class="card">
+      <h4 style="font-size: 0.95rem; font-weight: 600; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 12px;">Member Balances (Before vs After)</h4>
+      <div class="table-responsive">
+        <table class="expense-table" style="font-size: 0.9rem;">
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Before Balance</th>
+              <th>Simulated Balance</th>
+              <th>Net Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${balanceComparisons.map(b => {
+              const beforeText = b.beforeBalance > 0 ? `+₹${b.beforeBalance.toFixed(2)}` : (b.beforeBalance < 0 ? `-₹${Math.abs(b.beforeBalance).toFixed(2)}` : '₹0.00');
+              const afterText = b.afterBalance > 0 ? `+₹${b.afterBalance.toFixed(2)}` : (b.afterBalance < 0 ? `-₹${Math.abs(b.afterBalance).toFixed(2)}` : '₹0.00');
+
+              let diffClass = 'badge-secondary';
+              let diffText = 'No Change';
+              if (b.balanceDiff > 0) {
+                diffClass = 'badge-success';
+                diffText = `+₹${b.balanceDiff.toFixed(2)}`;
+              } else if (b.balanceDiff < 0) {
+                diffClass = 'badge-danger';
+                diffText = `-₹${Math.abs(b.balanceDiff).toFixed(2)}`;
+              }
+
+              return `
+                <tr>
+                  <td><strong>${escapeHtml(b.name)}</strong></td>
+                  <td><span style="font-weight: 500;">${beforeText}</span></td>
+                  <td><strong style="color: var(--color-primary);">${afterText}</strong></td>
+                  <td><span class="badge ${diffClass}">${diffText}</span></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4. Settlement Transactions Comparison -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4);">
+      <div class="card">
+        <h4 style="font-size: 0.95rem; font-weight: 600; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 12px;">Before Settlements (${beforeSettlements.length})</h4>
+        ${beforeSettlements.length === 0 ? `
+          <div style="font-size: 0.85rem; color: var(--color-text-muted);">Everyone is currently settled up.</div>
+        ` : `
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${beforeSettlements.map(s => {
+              const fromName = memberMap[s.from] || s.from;
+              const toName = memberMap[s.to] || s.to;
+              return `
+                <div style="background: var(--color-bg-subtle); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
+                  <span><strong>${escapeHtml(fromName)}</strong> ➔ pays ➔ <strong>${escapeHtml(toName)}</strong></span>
+                  <strong style="color: var(--color-danger-text);">₹${s.amount.toFixed(2)}</strong>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+
+      <div class="card" style="border: 1px solid var(--color-primary-light);">
+        <h4 style="font-size: 0.95rem; font-weight: 600; text-transform: uppercase; color: var(--color-primary); margin-bottom: 12px;">Simulated Settlements (${afterSettlements.length})</h4>
+        ${afterSettlements.length === 0 ? `
+          <div style="font-size: 0.85rem; color: var(--color-success-text); font-weight: 600;">Everyone is settled up 🎉</div>
+        ` : `
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${afterSettlements.map(s => {
+              const fromName = memberMap[s.from] || s.from;
+              const toName = memberMap[s.to] || s.to;
+              const stats = calc.getSettlementPaymentStats ? calc.getSettlementPaymentStats(s) : { remainingAmount: s.amount, status: s.status || 'pending' };
+              const isPaid = stats.status === 'paid';
+              return `
+                <div style="background: var(--color-bg-subtle); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; ${isPaid ? 'opacity: 0.6;' : ''}">
+                  <span><strong>${escapeHtml(fromName)}</strong> ➔ pays ➔ <strong>${escapeHtml(toName)}</strong></span>
+                  <div style="text-align: right;">
+                    <strong style="color: ${isPaid ? 'var(--color-success-text)' : 'var(--color-primary)'};">₹${stats.remainingAmount.toFixed(2)}</strong>
+                    ${isPaid ? '<span class="badge badge-success" style="margin-left: 4px; font-size: 0.7rem;">Paid</span>' : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
 // Universal module export support
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -1018,6 +1251,8 @@ if (typeof module !== 'undefined' && module.exports) {
     renderRecurringExpensesList,
     renderReceiptPreview,
     openReceiptLightboxModal,
+    renderSimulatorTab,
     escapeHtml
   };
 }
+

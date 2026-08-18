@@ -1429,16 +1429,37 @@ function openExpenseModal(editId = null) {
 
   if (!selectPaidBy || !participantsContainer) return;
 
+  const members = appState.members || [];
+
+  if (members.length < 2 && !editId) {
+    ui.showToast('Please add at least 2 members to your group before adding expenses.', 'warning');
+    if (appState.group && members.length < 2) {
+      ui.showScreen('screen-members-setup');
+      renderMembersSetupScreen();
+    }
+    return;
+  }
+
   // Clear validation errors
   ui.clearFieldError(inputTitle);
   ui.clearFieldError(inputAmount);
 
-  // Populate Paid By dropdown
-  selectPaidBy.innerHTML = appState.members.map(m => `
-    <option value="${m.id}">${ui.escapeHtml(m.name)}</option>
-  `).join('');
+  const targetExp = editId ? (appState.expenses || []).find(e => e.id === editId) : null;
+  const currentUserId = appState.group ? appState.group.currentUserId : null;
+  const defaultPayerId = targetExp ? targetExp.paidBy : (currentUserId || (members[0] ? members[0].id : ''));
 
-  const targetExp = editId ? appState.expenses.find(e => e.id === editId) : null;
+  // Populate Paid By dropdown
+  if (members.length === 0) {
+    selectPaidBy.innerHTML = '<option value="" disabled selected>No members in group yet</option>';
+  } else {
+    selectPaidBy.innerHTML = '<option value="" disabled>Select member who paid</option>' +
+      members.map(m => `
+        <option value="${m.id}" ${m.id === defaultPayerId ? 'selected' : ''}>${ui.escapeHtml(m.name)}</option>
+      `).join('');
+    if (defaultPayerId) {
+      selectPaidBy.value = defaultPayerId;
+    }
+  }
 
   if (targetExp && targetExp.receipt && targetExp.receipt.data) {
     currentExpenseReceipt = { ...targetExp.receipt };
@@ -1451,7 +1472,7 @@ function openExpenseModal(editId = null) {
     if (modalTitle) modalTitle.textContent = 'Edit Expense';
     if (inputTitle) inputTitle.value = targetExp.title;
     if (inputAmount) inputAmount.value = targetExp.amount;
-    if (selectPaidBy) selectPaidBy.value = targetExp.paidBy;
+    if (selectPaidBy && targetExp.paidBy) selectPaidBy.value = targetExp.paidBy;
     if (selectCategory) selectCategory.value = targetExp.category || 'Other';
     if (inputDate) inputDate.value = targetExp.date || new Date().toISOString().split('T')[0];
 
@@ -1477,17 +1498,21 @@ function openExpenseModal(editId = null) {
   }
 
   // Populate Participants Checkboxes
-  const selectedParticipants = targetExp ? targetExp.participants : appState.members.map(m => m.id);
+  const selectedParticipants = targetExp ? targetExp.participants : members.map(m => m.id);
 
-  participantsContainer.innerHTML = appState.members.map(m => {
-    const isChecked = selectedParticipants.includes(m.id);
-    return `
-      <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
-        <input type="checkbox" class="chk-participant" value="${m.id}" ${isChecked ? 'checked' : ''}>
-        <span>${ui.escapeHtml(m.name)}</span>
-      </label>
-    `;
-  }).join('');
+  if (members.length === 0) {
+    participantsContainer.innerHTML = '<div style="color: var(--color-text-muted); font-size: 0.85rem; padding: 4px; grid-column: 1 / -1;">No group members added yet.</div>';
+  } else {
+    participantsContainer.innerHTML = members.map(m => {
+      const isChecked = selectedParticipants.includes(m.id);
+      return `
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+          <input type="checkbox" class="chk-participant" value="${m.id}" ${isChecked ? 'checked' : ''}>
+          <span>${ui.escapeHtml(m.name)}</span>
+        </label>
+      `;
+    }).join('');
+  }
 
   if (targetExp && targetExp.splitType === 'custom') {
     renderCustomSharesInputs(targetExp.customShares);
@@ -1803,22 +1828,44 @@ function openRecurringModal(editId = null) {
 
   if (!selectPaidBy || !participantsContainer) return;
 
+  const members = appState.members || [];
+
+  if (members.length < 2 && !editId) {
+    ui.showToast('Please add at least 2 members to your group before adding recurring expenses.', 'warning');
+    if (appState.group && members.length < 2) {
+      ui.showScreen('screen-members-setup');
+      renderMembersSetupScreen();
+    }
+    return;
+  }
+
   ui.clearFieldError(inputTitle);
   ui.clearFieldError(inputAmount);
 
-  // Populate Paid By dropdown
-  selectPaidBy.innerHTML = appState.members.map(m => `
-    <option value="${m.id}">${ui.escapeHtml(m.name)}</option>
-  `).join('');
-
   const target = editId ? (appState.recurringExpenses || []).find(r => r.id === editId) : null;
+  const currentUserId = appState.group ? appState.group.currentUserId : null;
+  const defaultPayerId = target ? target.paidBy : (currentUserId || (members[0] ? members[0].id : ''));
+
+  // Populate Paid By dropdown
+  if (members.length === 0) {
+    selectPaidBy.innerHTML = '<option value="" disabled selected>No members in group yet</option>';
+  } else {
+    selectPaidBy.innerHTML = '<option value="" disabled>Select member who paid</option>' +
+      members.map(m => `
+        <option value="${m.id}" ${m.id === defaultPayerId ? 'selected' : ''}>${ui.escapeHtml(m.name)}</option>
+      `).join('');
+    if (defaultPayerId) {
+      selectPaidBy.value = defaultPayerId;
+    }
+  }
+
   const todayStr = new Date().toISOString().split('T')[0];
 
   if (target) {
     if (modalTitle) modalTitle.textContent = 'Edit Recurring Expense';
     if (inputTitle) inputTitle.value = target.title;
     if (inputAmount) inputAmount.value = target.amount;
-    if (selectPaidBy) selectPaidBy.value = target.paidBy;
+    if (selectPaidBy && target.paidBy) selectPaidBy.value = target.paidBy;
     if (selectFrequency) selectFrequency.value = target.frequency || 'monthly';
     if (selectCategory) selectCategory.value = target.category || 'Other';
     if (inputStartDate) inputStartDate.value = target.startDate || todayStr;
@@ -1861,17 +1908,21 @@ function openRecurringModal(editId = null) {
   if (selectFrequency) selectFrequency.onchange = updateAutoNextDueDate;
 
   // Populate Participants Checkboxes
-  const selectedParticipants = target ? target.participants : appState.members.map(m => m.id);
+  const selectedParticipants = target ? target.participants : members.map(m => m.id);
 
-  participantsContainer.innerHTML = appState.members.map(m => {
-    const isChecked = selectedParticipants.includes(m.id);
-    return `
-      <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
-        <input type="checkbox" class="chk-recurring-participant" value="${m.id}" ${isChecked ? 'checked' : ''}>
-        <span>${ui.escapeHtml(m.name)}</span>
-      </label>
-    `;
-  }).join('');
+  if (members.length === 0) {
+    participantsContainer.innerHTML = '<div style="color: var(--color-text-muted); font-size: 0.85rem; padding: 4px; grid-column: 1 / -1;">No group members added yet.</div>';
+  } else {
+    participantsContainer.innerHTML = members.map(m => {
+      const isChecked = selectedParticipants.includes(m.id);
+      return `
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+          <input type="checkbox" class="chk-recurring-participant" value="${m.id}" ${isChecked ? 'checked' : ''}>
+          <span>${ui.escapeHtml(m.name)}</span>
+        </label>
+      `;
+    }).join('');
+  }
 
   if (target && target.splitType === 'custom') {
     renderRecurringCustomSharesInputs(target.customShares);

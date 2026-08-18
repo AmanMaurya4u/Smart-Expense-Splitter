@@ -58,7 +58,7 @@ function calculateCustomSplit(amount, customSharesMap) {
 
   const sum = sumCents / 100;
   const remaining = diffCents / 100;
-  const isValid = Math.abs(diffCents) <= 1; // 1 paisa tolerance for float representation
+  const isValid = diffCents === 0; // Exact paisa match required for zero-balance error
 
   return {
     isValid,

@@ -7,6 +7,7 @@ const {
   calculateBalances,
   calculateSettlements,
   getBudgetStats,
+  calculateTotalSpending,
   compareBalances,
   compareBudgetStats
 } = require('../js/calculation.js');
